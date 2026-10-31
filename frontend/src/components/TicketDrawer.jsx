@@ -1,5 +1,6 @@
 import { useEffect, useState } from 'react'
 import { getTechnicians, suggestTechnicians, updateTicket } from '../api/client.js'
+import EvidenceSparkline from './EvidenceSparkline.jsx'
 import SlaCountdown from './SlaCountdown.jsx'
 import VerificationBadge from './VerificationBadge.jsx'
 
@@ -71,6 +72,7 @@ export default function TicketDrawer({ ticket, onClose }) {
             <div className="mt-2 rounded-md border border-line bg-panel-2 p-3 text-sm text-muted">
               <div className="mb-1 text-xs font-semibold uppercase tracking-wide">Evidence</div>
               {ticket.evidence.explanation}
+              <EvidenceSparkline entityId={ticket.entity_id} />
             </div>
           )}
         </section>
