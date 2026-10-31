@@ -15,7 +15,7 @@ from sqlalchemy import text
 from sqlalchemy.orm import Session
 
 from .. import schemas
-from ..cache import cached
+from ..cache import cached, invalidate
 from ..constants import STATUS_CRITICAL, STATUS_OFFLINE, STATUS_OK, STATUS_WARNING
 from ..db import get_db
 from ..status import active_alert_status, equipment_status, risk_status, worse
@@ -427,3 +427,45 @@ def get_equipment(
         prediction=prediction,
         open_ticket_id=open_ticket[0] if open_ticket else None,
     )
+
+
+# --------------------------------------------------------------------------- #
+# POST /api/demo/reset
+# --------------------------------------------------------------------------- #
+@router.post("/demo/reset")
+def demo_reset(
+    confirm: bool = Query(False, description="must be true; guards against a stray POST"),
+    db: Session = Depends(get_db),
+) -> dict:
+    """Clear demo-generated state so the run can be replayed. Not in api.md.
+
+    ``ALL_final_hour.md`` step 1 tells the team to call this "after rehearsals",
+    but nothing served it - a broken instruction on demo day. The delete logic
+    already lived in ``seed --reset``; this just exposes it.
+
+    Deliberately narrow: only the three derived tables are cleared.
+    buildings/rooms/equipment/readings/technicians are left alone, because
+    re-seeding 328 assets and 190k readings mid-demo takes minutes over the
+    Supabase pooler. This resets the *story* (alerts, tickets, predictions) and
+    keeps the *world* (the campus) intact.
+    """
+    # A GET-able, no-argument delete endpoint is a footgun. Requiring an
+    # explicit flag means nothing wipes the demo by accident - curl with no
+    # body gets a 400 and a sentence, not an empty database.
+    if not confirm:
+        raise HTTPException(
+            status_code=400,
+            detail="refusing to delete demo state without ?confirm=true",
+        )
+
+    from ..models import Alert, Prediction, Ticket
+
+    counts = {
+        "tickets": db.query(Ticket).delete(),
+        "alerts": db.query(Alert).delete(),
+        "predictions": db.query(Prediction).delete(),
+    }
+    db.commit()
+    invalidate()  # campus cards show alert counts + open ticket totals
+
+    return {"reset": True, "deleted": counts}
