@@ -98,41 +98,93 @@ export const getImpact = (id) =>
     : request(`/api/connections/${id}/impact`)
 
 // ---- Tickets & technicians ----
+// Mock mode keeps mutable copies so the board, drawer and technician view behave like the real API.
+const mockTickets = structuredClone(ticketsMock)
+const mockTechnicians = [
+  { id: 'T-001', name: 'Suresh Patil', skill: 'mechanical' },
+  { id: 'T-002', name: 'Anita Rao', skill: 'electrical' },
+  { id: 'T-003', name: 'Ravi Kumar', skill: 'plumbing' },
+]
+const SLA_HOURS = { critical: 4, high: 12, medium: 48, low: 72 }
+let mockSeq = 5
+
+const isOpenStatus = (s) => !['done', 'closed'].includes(s)
+const activeCount = (techId) =>
+  mockTickets.filter((t) => t.technician?.id === techId && isOpenStatus(t.status)).length
+// Recompute the countdown from sla_due_at so the number is live.
+const withSla = (t) => ({ ...t, sla_seconds_left: Math.max(0, Math.round((new Date(t.sla_due_at) - Date.now()) / 1000)) })
+
 export const getTickets = (status) =>
   USE_MOCK
-    ? mock(status ? ticketsMock.filter((t) => t.status === status) : ticketsMock)
+    ? mock((status ? mockTickets.filter((t) => t.status === status) : mockTickets).map(withSla))
     : request(`/api/tickets${qs({ status })}`)
 
-export const createTicket = (body) =>
-  USE_MOCK
-    ? mock({ ...ticketsMock[0], ...body, id: 'TK-MOCK', source: 'manual' })
-    : request('/api/tickets', json('POST', body))
+export const createTicket = (body) => {
+  if (!USE_MOCK) return request('/api/tickets', json('POST', body))
+  const now = new Date()
+  const ticket = {
+    equipment_id: null,
+    description: '',
+    evidence: null,
+    id: `TK-${String(mockSeq++).padStart(4, '0')}`,
+    source: 'manual',
+    status: 'open',
+    technician: null,
+    created_at: now.toISOString(),
+    sla_due_at: new Date(now.getTime() + SLA_HOURS[body.priority] * 3600e3).toISOString(),
+    escalated: false,
+    verification: 'none',
+    ...body,
+  }
+  mockTickets.unshift(ticket)
+  return mock(withSla(ticket))
+}
 
-export const updateTicket = (id, body) =>
-  USE_MOCK
-    ? mock({ ...ticketsMock.find((t) => t.id === id), ...body })
-    : request(`/api/tickets/${id}`, json('PATCH', body))
+export const updateTicket = (id, body) => {
+  if (!USE_MOCK) return request(`/api/tickets/${id}`, json('PATCH', body))
+  const t = mockTickets.find((x) => x.id === id)
+  if (body.technician_id !== undefined) {
+    const tech = mockTechnicians.find((x) => x.id === body.technician_id)
+    t.technician = tech ? { id: tech.id, name: tech.name } : null
+    if (tech && t.status === 'open') t.status = 'assigned'
+  }
+  if (body.status) t.status = body.status
+  return mock(withSla(t))
+}
 
 export const completeTicket = (id, note, photo) => {
-  if (USE_MOCK) return mock({ ...ticketsMock[0], id, status: 'done', verification: 'pending' })
-  const form = new FormData()
-  form.append('note', note)
-  if (photo) form.append('photo', photo)
-  return request(`/api/tickets/${id}/complete`, { method: 'POST', body: form })
+  if (!USE_MOCK) {
+    const form = new FormData()
+    form.append('note', note)
+    if (photo) form.append('photo', photo)
+    return request(`/api/tickets/${id}/complete`, { method: 'POST', body: form })
+  }
+  const t = mockTickets.find((x) => x.id === id)
+  Object.assign(t, {
+    status: 'done',
+    verification: 'pending',
+    completed_at: new Date().toISOString(),
+    completion_note: note,
+    completion_photo: photo ? URL.createObjectURL(photo) : null,
+  })
+  // The real backend re-checks live readings; the mock resolves to "verified" after 4 s.
+  setTimeout(() => (t.verification = 'verified'), 4000)
+  return mock(withSla(t))
 }
 
 export const getTechnicians = () =>
   USE_MOCK
-    ? mock([
-        { id: 'T-001', name: 'Suresh Patil', skill: 'mechanical', active_tickets: 1 },
-        { id: 'T-002', name: 'Anita Rao', skill: 'electrical', active_tickets: 0 },
-        { id: 'T-003', name: 'Ravi Kumar', skill: 'plumbing', active_tickets: 1 },
-      ])
+    ? mock(mockTechnicians.map((t) => ({ ...t, active_tickets: activeCount(t.id) })))
     : request('/api/technicians')
 
 export const suggestTechnicians = (ticketId) =>
   USE_MOCK
-    ? mock([{ id: 'T-002', name: 'Anita Rao', skill: 'electrical', active_tickets: 0, reason: 'Electrical skill, no active tickets' }])
+    ? mock(
+        mockTechnicians
+          .map((t) => ({ ...t, active_tickets: activeCount(t.id) }))
+          .sort((a, b) => a.active_tickets - b.active_tickets)
+          .map((t) => ({ ...t, reason: t.active_tickets === 0 ? 'Free now' : `${t.active_tickets} active ticket(s)` })),
+      )
     : request(`/api/technicians/suggest${qs({ ticket_id: ticketId })}`)
 
 // ---- Insights (Aditya) ----

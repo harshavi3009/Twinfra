@@ -1,5 +1,6 @@
 import { useEffect, useState } from 'react'
 import { getAlerts, getBuilding, getCampus, getRoom } from '../api/client.js'
+import CreateTicketModal from '../components/CreateTicketModal.jsx'
 import DrillDownPanel from '../components/DrillDownPanel.jsx'
 import EntityCharts from '../components/EntityCharts.jsx'
 import KpiStrip from '../components/KpiStrip.jsx'
@@ -11,6 +12,8 @@ export default function Overview() {
   const { data: alerts } = usePolling(() => getAlerts(true))
   // Selection state lives here; the 3D view and the right panel both use it.
   const [selection, setSelection] = useState({ buildingId: null, floorId: null, roomId: null, equipmentId: null })
+  // Set when "Create ticket" is clicked on an asset card; the form opens prefilled with that equipment.
+  const [newTicket, setNewTicket] = useState(null)
 
   // Detail for the 3D drill-down (rooms of the selected building, equipment of the selected room).
   // Campus3D ignores a detail whose id doesn't match the selection, so stale values are harmless.
@@ -65,10 +68,22 @@ export default function Overview() {
             selection={selection}
             onSelect={setSelection}
             onAlertSelect={selectEntity}
+            onCreateTicket={(eq) =>
+              setNewTicket({ entityId: eq.room_id, equipmentId: eq.id, title: `${eq.name}: needs attention` })
+            }
           />
         </aside>
       </div>
       <EntityCharts entityId={selection.equipmentId || selection.roomId || selection.buildingId} />
+      {newTicket && (
+        <CreateTicketModal
+          entityId={newTicket.entityId}
+          equipmentId={newTicket.equipmentId}
+          title={newTicket.title}
+          onClose={() => setNewTicket(null)}
+          onCreated={() => setNewTicket(null)}
+        />
+      )}
     </div>
   )
 }
