@@ -7,10 +7,25 @@ import Building from './Building'
 import UtilityNode from './UtilityNode'
 import Effects from './Effects'
 import CameraRig from './CameraRig'
+import DayNight from './DayNight'
 import { useSelection } from './useSelection'
 
 const EMPTY = []
 const DOUBLE_CLICK_MS = 350
+
+const simTag = {
+  position: 'absolute',
+  top: 12,
+  right: 12,
+  padding: '4px 10px',
+  borderRadius: 8,
+  border: '1px solid rgba(250,204,21,0.6)',
+  background: 'rgba(40,30,5,0.8)',
+  color: '#facc15',
+  font: '600 12px system-ui, sans-serif',
+  letterSpacing: 1,
+  pointerEvents: 'none',
+}
 
 const backBtn = {
   position: 'absolute',
@@ -30,7 +45,9 @@ const backBtn = {
  * Click a building -> floors explode + room heatmap -> click a room -> equipment -> click equipment.
  * `roomDetail` (GET /api/rooms/{id}) is an optional extra prop: it gives the selected room's
  * equipment list so markers are typed and clickable. Without it, generic markers are drawn.
- * R3 props (connections, highlightIds, whatIf, timeOfDay) are accepted but not used yet.
+ * R3 props connections and highlightIds are accepted but not used yet.
+ * `whatIf` (per_building from /api/insights/whatif) recolours buildings to their simulated state.
+ * `timeOfDay` = 'day' | 'night': night darkens the sky and lights, and makes lit windows glow.
  */
 export function Campus3D({
   campus,
@@ -42,14 +59,16 @@ export function Campus3D({
   connections = null,
   // eslint-disable-next-line no-unused-vars
   highlightIds = EMPTY,
-  // eslint-disable-next-line no-unused-vars
   whatIf = null,
-  // eslint-disable-next-line no-unused-vars
   timeOfDay = 'day',
 }) {
   const buildings = campus?.buildings ?? EMPTY
   const utilities = campus?.utilities ?? EMPTY
+  const night = timeOfDay === 'night'
   const { selection, select, back, reset } = useSelection(selectionProp, onSelect)
+
+  // whatIf rows keyed by building id, so each Building can look up its simulated state.
+  const simById = useMemo(() => new Map((whatIf ?? EMPTY).map((row) => [row.id, row])), [whatIf])
 
   // Look at the middle of the campus.
   const overviewTarget = useMemo(() => {
@@ -88,12 +107,7 @@ export function Campus3D({
         style={{ background: PALETTE.bg }}
         onPointerMissed={onPointerMissed}
       >
-        <color attach="background" args={[PALETTE.bg]} />
-        <fog attach="fog" args={[PALETTE.bg, 140, 330]} />
-
-        <ambientLight intensity={0.55} color="#8aa4ff" />
-        <hemisphereLight args={['#9db8ff', '#0b1020', 0.5]} />
-        <directionalLight position={[70, 120, 50]} intensity={0.9} color="#cfe0ff" />
+        <DayNight night={night} />
 
         <Ground buildings={buildings} />
         <Trees buildings={buildings} utilities={utilities} />
@@ -110,6 +124,8 @@ export function Campus3D({
               roomDetail={selected ? roomDetail : null}
               onSelect={select}
               labelDelay={(i + 1) * 150}
+              sim={simById.get(b.id) ?? null}
+              night={night}
             />
           )
         })}
@@ -125,6 +141,8 @@ export function Campus3D({
         />
         <Effects />
       </Canvas>
+
+      {whatIf && <div style={simTag}>SIMULATED</div>}
 
       {anySelected && (
         <button type="button" style={backBtn} onClick={back}>
