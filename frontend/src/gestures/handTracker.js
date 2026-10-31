@@ -24,9 +24,9 @@ export class HandTracker {
    * @param {(hands: number[][][]) => void} opts.onHands  21 × [x,y] per hand
    * @param {(msg: string) => void} opts.onError
    * @param {HTMLVideoElement} opts.video                 a <video> to draw from
-   * @param {number} [opts.fps]                           detection rate (default 15)
+   * @param {number} [opts.fps]                           detection rate (default 30)
    */
-  constructor({ onHands, onError, video, fps = 15 }) {
+  constructor({ onHands, onError, video, fps = 30 }) {
     this.onHands = onHands
     this.onError = onError
     this.video = video
@@ -77,7 +77,7 @@ export class HandTracker {
       try {
         this.landmarker = await HandLandmarker.createFromOptions(fileset, options('GPU'))
       } catch {
-        // Some machines have no usable WebGL2; CPU is slower but still fine at 15 fps.
+        // Some machines have no usable WebGL2; CPU is slower but still fine.
         this.landmarker = await HandLandmarker.createFromOptions(fileset, options('CPU'))
       }
     } catch (err) {

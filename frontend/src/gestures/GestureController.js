@@ -26,21 +26,20 @@ export const TUNING = {
   /** Frames a gesture must persist before it counts. At 15 fps, 3 ≈ 200 ms. */
   stableFrames: 2,
   /** Frames of landmarks to average before classifying; damps sensor jitter. */
-  smoothFrames: 6,
+  smoothFrames: 3,
   /** Seconds a toggle gesture must be held before it fires. */
   holdSeconds: 0.8,
   /** Seconds after a toggle before it can fire again. */
   cooldownSeconds: 1.3,
   /** Palm movement below this (normalised units) counts as "not moving". */
-  deadZone: 0.004,
+  deadZone: 0.0012,
   /** Rotate gain: palm delta -> radians. Deliberately small; jitter is amplified here. */
   orbitGain: 5.0,
   /** Pan gain: palm delta -> world units. */
-  panGain: 1.2,
   /** Two-hand zoom: ignore distance changes smaller than this ratio. */
-  zoomDeadZone: 0.006,
+  zoomDeadZone: 0.004,
   /** Exponential smoothing for palm position. 0 = no smoothing, 1 = frozen. */
-  smoothing: 0.55,
+  smoothing: 0.35,
 }
 
 /** Gestures that fire once when held, rather than continuously. */
@@ -192,42 +191,24 @@ export class GestureController {
       // frame we switch gestures -- no need to also gate on lastGesture, which
       // cost us the whole first pan frame.
       if (this.prevPalm) {
+        // Raw normalized delta. The bridge multiplies by GAIN.pan; doing it in
+        // both places made the effective speed 1.2 x 420 and impossible to
+        // reason about -- or to fix by editing one number.
         this.send('pan', [
-          (this.smoothPalm[0] - this.prevPalm[0]) * this.tuning.panGain,
-          (this.smoothPalm[1] - this.prevPalm[1]) * this.tuning.panGain,
+          this.smoothPalm[0] - this.prevPalm[0],
+          this.smoothPalm[1] - this.prevPalm[1],
         ])
       }
-      // Zoom shares the fist with pan, but only when the depth change clearly
-      // dominates the sideways movement. Firing both at once made pan feel
-      // sluggish and zoom feel broken: every small push re-dollied the camera
-      // while you were trying to slide the view.
-      const size = handSize(lm)
-      if (this.prevSize) {
-        const ratio = size / this.prevSize
-        const lateral = this.prevPalm
-          ? Math.abs(this.smoothPalm[0] - this.prevPalm[0]) +
-            Math.abs(this.smoothPalm[1] - this.prevPalm[1])
-          : 0
-        // only zoom when the hand is growing/shrinking more than it is moving
-        const depth = Math.abs(ratio - 1)
-        // Only zoom when the depth change genuinely dominates sideways motion.
-        // 2x, not 'greater than': a fist sliding across the frame also changes
-        // its apparent size slightly, and that alone was firing zoom.
-        if (depth > this.tuning.zoomDeadZone && depth > lateral * 2) {
-          this.send('zoom', 1 / Math.max(0.92, Math.min(1.09, ratio)))
-        }
-      }
-      this.prevSize = size
       this.send('cursor', null)
-      } else if (gesture === 'thumbs_up') {
+    } else if (gesture === 'thumbs_up') {
       // Zoom has its OWN gesture. Sharing the fist with pan meant every sideways
-      // move also nudged the dolly, which made pan feel slow and zoom feel
-      // broken. Thumbs up + hand closer/further = zoom, and nothing else.
+      // move also nudged the dolly, which made pan feel slow and zoom dead.
+      // Thumbs up + hand closer/further = zoom, and nothing else.
       const size = handSize(lm)
       if (this.prevSize) {
         const ratio = size / this.prevSize
-        if (Math.abs(ratio - 1) > this.tuning.zoomDeadZone * 3) {
-          this.send('zoom', 1 / Math.max(0.9, Math.min(1.12, ratio)))
+        if (Math.abs(ratio - 1) > this.tuning.zoomDeadZone) {
+          this.send('zoom', 1 / Math.max(0.85, Math.min(1.18, ratio)))
         }
       }
       this.prevSize = size

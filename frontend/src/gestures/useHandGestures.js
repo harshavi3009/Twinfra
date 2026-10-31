@@ -99,6 +99,15 @@ export function useHandGestures({ enabled = false, videoRef, onCommand } = {}) {
       return 'capturing -- hold your hand up now'
     }
 
+    // Exposed for the browser-console diagnostic and for the automated tests:
+    //   __gesture.push('pan', [0.1, 0])   -> drive the real camera
+    //   __gesture.ctrl.lastRaw            -> what the classifier saw
+    globalThis.__gesture = {
+      ctrl: controllerRef.current,
+      queue: commandQueueRef,
+      push: (name, arg) => commandQueueRef.current.push({ name, arg, id: ++commandSeq }),
+    }
+
     const tracker = new HandTracker({
       video,
       onHands: (hands) => {
