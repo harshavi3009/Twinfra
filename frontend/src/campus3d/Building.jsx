@@ -80,8 +80,12 @@ export default function Building({
   roomDetail = null,
   onSelect,
   labelDelay = 0, // ms before this building's label mounts (see index.jsx)
+  sim = null, // one whatIf row ({ status_after, power_kw_after }) when a what-if is shown
 }) {
-  const { id, name, floors, position, size, status, power_kw, active_alerts } = data
+  const { id, name, floors, position, size, active_alerts } = data
+  // Simulated values replace the live ones while a what-if is shown; the colour lerp animates the change.
+  const status = sim?.status_after ?? data.status
+  const power_kw = sim?.power_kw_after ?? data.power_kw
   const { w, d } = size
   const count = Math.max(1, floors)
 
