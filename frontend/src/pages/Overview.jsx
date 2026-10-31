@@ -1,6 +1,7 @@
 import { useState } from 'react'
 import { getAlerts, getCampus } from '../api/client.js'
 import DrillDownPanel from '../components/DrillDownPanel.jsx'
+import EntityCharts from '../components/EntityCharts.jsx'
 import KpiStrip from '../components/KpiStrip.jsx'
 import { usePolling } from '../hooks/usePolling.js'
 import { Campus3D } from '../campus3d/index.jsx'
@@ -28,10 +29,10 @@ export default function Overview() {
   }
 
   return (
-    <div className="flex h-full flex-col gap-4">
+    <div className="flex flex-col gap-4">
       <KpiStrip totals={campus.totals} alerts={alerts} />
-      <div className="flex min-h-0 flex-1 gap-4">
-        <div className="min-h-64 min-w-0 flex-1">
+      <div className="flex h-[520px] gap-4">
+        <div className="min-w-0 flex-1">
           <Campus3D campus={campus} selection={selection} onSelect={setSelection} />
         </div>
         <aside className="w-96 shrink-0 overflow-auto">
@@ -44,6 +45,7 @@ export default function Overview() {
           />
         </aside>
       </div>
+      <EntityCharts entityId={selection.equipmentId || selection.roomId || selection.buildingId} />
     </div>
   )
 }
