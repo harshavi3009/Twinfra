@@ -136,14 +136,34 @@ export const suggestTechnicians = (ticketId) =>
     : request(`/api/technicians/suggest${qs({ ticket_id: ticketId })}`)
 
 // ---- Insights (Aditya) ----
+// Mock mode keeps a mutable copy so "Inject fault" in the demo toolbar adds a real alert.
+const mockAlerts = structuredClone(alertsMock)
+
 export const getAlerts = (active = true) =>
-  USE_MOCK ? mock(alertsMock) : request(`/api/insights/alerts${qs({ active })}`)
+  USE_MOCK ? mock(mockAlerts) : request(`/api/insights/alerts${qs({ active })}`)
 
 export const runInsights = () =>
   USE_MOCK ? mock({ alerts_new: 0, tickets_created: 0, verified: 0 }) : request('/api/insights/run', { method: 'POST' })
 
-export const injectFault = (entity_id, kind) =>
-  USE_MOCK ? mock({ ok: true }) : request('/api/insights/sim/fault', json('POST', { entity_id, kind }))
+export const injectFault = (entity_id, kind) => {
+  if (!USE_MOCK) return request('/api/insights/sim/fault', json('POST', { entity_id, kind }))
+  mockAlerts.unshift({
+    id: Date.now(),
+    ts: new Date().toISOString(),
+    entity_id,
+    entity_name: entity_id,
+    kind,
+    metric: kind === 'night_leak' ? 'water_lpm' : 'power_kw',
+    actual: 20,
+    expected: 8,
+    ratio: 2.5,
+    severity: 'critical',
+    explanation: `Injected demo fault (${kind}) on ${entity_id}.`,
+    est_cost_inr_month: 15000,
+    ticket_id: null,
+  })
+  return mock({ ok: true })
+}
 
 export const getFaults = () => (USE_MOCK ? mock([]) : request('/api/insights/sim/faults'))
 

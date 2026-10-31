@@ -1,5 +1,7 @@
 import { useEffect, useState } from 'react'
 import { NavLink, Outlet } from 'react-router-dom'
+import CriticalToast from './CriticalToast.jsx'
+import DemoToolbar from './DemoToolbar.jsx'
 
 const NAV = [
   { to: '/', label: 'Overview', end: true },
@@ -61,6 +63,8 @@ export default function Layout() {
         <main className="min-h-0 flex-1 overflow-auto p-6">
           <Outlet />
         </main>
+        <CriticalToast />
+        <DemoToolbar />
       </div>
     </div>
   )
