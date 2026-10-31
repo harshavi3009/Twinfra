@@ -29,6 +29,7 @@ from fastapi import APIRouter, Depends, File, Form, HTTPException, Query, Upload
 from pydantic import BaseModel, Field
 from sqlalchemy import text
 from sqlalchemy.orm import Session
+from ..cache import invalidate
 
 from ..constants import PRIORITIES, SLA_HOURS, TICKET_STATUSES
 from ..db import get_db
@@ -308,6 +309,7 @@ def create_ticket(payload: TicketCreate, db: Session = Depends(get_db)) -> Ticke
         },
     )
     db.commit()
+    invalidate()
     return _fetch(db, ticket_id)
 
 
@@ -401,10 +403,12 @@ def patch_ticket(
         text(f"UPDATE tickets SET {', '.join(sets)} WHERE id = :id"), params
     )
     db.commit()
+    invalidate()
 
     if payload.technician_id is not None:
         tech_mod.recount(db)
         db.commit()
+        invalidate()
 
     return _fetch(db, ticket_id)
 
@@ -463,6 +467,7 @@ async def complete_ticket(
         {"id": ticket_id, "note": note or "", "photo": photo_path},
     )
     db.commit()
+    invalidate()
 
     # Imported here: insights/ pulls pandas, and this endpoint must stay fast.
     try:

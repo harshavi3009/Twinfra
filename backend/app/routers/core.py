@@ -15,6 +15,7 @@ from sqlalchemy import text
 from sqlalchemy.orm import Session
 
 from .. import schemas
+from ..cache import cached
 from ..constants import STATUS_CRITICAL, STATUS_OFFLINE, STATUS_OK, STATUS_WARNING
 from ..db import get_db
 from ..status import active_alert_status, equipment_status, risk_status, worse
@@ -161,6 +162,7 @@ def _alert_state(db: Session) -> tuple[dict[str, str], dict[str, int]]:
 # GET /api/campus
 # --------------------------------------------------------------------------- #
 @router.get("/campus", response_model=schemas.Campus)
+@cached("campus")
 def get_campus(db: Session = Depends(get_db)) -> schemas.Campus:
     buildings = db.execute(
         text(
@@ -221,6 +223,7 @@ def get_campus(db: Session = Depends(get_db)) -> schemas.Campus:
 # GET /api/buildings/{id}
 # --------------------------------------------------------------------------- #
 @router.get("/buildings/{building_id}", response_model=schemas.BuildingDetail)
+@cached("building")
 def get_building(building_id: str, db: Session = Depends(get_db)) -> schemas.BuildingDetail:
     b = db.execute(
         text("SELECT id, name FROM buildings WHERE id = :b"), {"b": building_id}
@@ -281,6 +284,7 @@ def get_building(building_id: str, db: Session = Depends(get_db)) -> schemas.Bui
 # GET /api/rooms/{id}
 # --------------------------------------------------------------------------- #
 @router.get("/rooms/{room_id}", response_model=schemas.RoomDetail)
+@cached("room")
 def get_room(room_id: str, db: Session = Depends(get_db)) -> schemas.RoomDetail:
     room = db.execute(
         text("SELECT id, name, room_type FROM rooms WHERE id = :r"), {"r": room_id}
@@ -333,6 +337,7 @@ def get_room(room_id: str, db: Session = Depends(get_db)) -> schemas.RoomDetail:
 # GET /api/equipment/{id}
 # --------------------------------------------------------------------------- #
 @router.get("/equipment/{equipment_id}", response_model=schemas.EquipmentDetail)
+@cached("equipment", ttl=1.0)
 def get_equipment(
     equipment_id: str, db: Session = Depends(get_db)
 ) -> schemas.EquipmentDetail:

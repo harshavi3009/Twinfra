@@ -21,6 +21,7 @@ from sqlalchemy.orm import Session
 
 from .. import schemas
 from ..db import get_db
+from ..cache import invalidate
 
 router = APIRouter(prefix="/api", tags=["readings"])
 
@@ -253,6 +254,7 @@ def post_readings(batch: ReadingsBatch, db: Session = Depends(get_db)) -> dict:
     )
     db.execute(ins)
     db.commit()
+    invalidate()
 
     return {
         "inserted": len(rows) - int(existing),
@@ -360,6 +362,7 @@ async def import_csv(
         )
         db.execute(stmt)
         db.commit()
+        invalidate()
         out["commit"] = True
         # inserted vs updated matters: a re-import should report 0 inserted,
         # not claim it added everything again.
