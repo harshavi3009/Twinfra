@@ -15,7 +15,7 @@ from sqlalchemy import text
 from sqlalchemy.orm import Session
 
 from .. import schemas
-from ..constants import STATUS_OFFLINE, STATUS_OK
+from ..constants import STATUS_CRITICAL, STATUS_OFFLINE, STATUS_OK, STATUS_WARNING
 from ..db import get_db
 from ..status import active_alert_status, equipment_status, risk_status, worse
 
@@ -25,34 +25,48 @@ router = APIRouter(prefix="/api", tags=["core"])
 # --------------------------------------------------------------------------- #
 # helpers
 # --------------------------------------------------------------------------- #
-def _latest_metrics(db: Session, ids: list[str]) -> dict[tuple[str, str], float]:
-    """(entity_id, metric) -> value of the newest reading, plus its baseline.
+def _metric_map(db: Session, ids: list[str]) -> dict[str, dict[str, float]]:
+    """Newest value + stored baseline per entity/metric, in ONE round trip.
 
-    `DISTINCT ON` keeps this a single round trip instead of 3 queries per entity.
+    Also returns the trailing-24h mean as `<metric>_fallback` so callers never
+    need a second scan of readings just for a baseline. Each round trip to a
+    remote Postgres costs ~300 ms, so query count is the thing that matters.
     """
     if not ids:
         return {}
     rows = db.execute(
         text(
             """
-            SELECT DISTINCT ON (entity_id, metric)
-                   entity_id, metric, value, baseline
-            FROM readings
-            WHERE entity_id = ANY(:ids)
-            ORDER BY entity_id, metric, ts DESC
+            WITH latest AS (
+                SELECT DISTINCT ON (entity_id, metric)
+                       entity_id, metric, value, baseline
+                FROM readings
+                WHERE entity_id = ANY(:ids)
+                ORDER BY entity_id, metric, ts DESC
+            ), recent AS (
+                SELECT entity_id, metric, avg(value) AS mean
+                FROM readings
+                WHERE entity_id = ANY(:ids) AND ts >= :since
+                GROUP BY entity_id, metric
+            )
+            SELECT l.entity_id, l.metric, l.value, l.baseline, r.mean
+            FROM latest l LEFT JOIN recent r USING (entity_id, metric)
             """
         ),
-        {"ids": ids},
+        {
+            "ids": ids,
+            "since": datetime.now(timezone.utc) - timedelta(hours=24),
+        },
     ).fetchall()
-    return {(r[0], r[1]): (float(r[2]), None if r[3] is None else float(r[3])) for r in rows}
 
-
-def _metric_map(db: Session, ids: list[str]) -> dict[str, dict[str, float]]:
     out: dict[str, dict[str, float]] = {}
-    for (entity_id, metric), (value, baseline) in _latest_metrics(db, ids).items():
-        out.setdefault(entity_id, {})[metric] = value
+    for entity_id, metric, value, baseline, mean in rows:
+        m = out.setdefault(entity_id, {})
+        m[metric] = float(value)
         if baseline is not None:
-            out[entity_id].setdefault(f"{metric}_baseline", baseline)
+            m[f"{metric}_baseline"] = float(baseline)
+        elif mean is not None:
+            m[f"{metric}_baseline"] = float(mean)
     return out
 
 
@@ -68,29 +82,52 @@ def _power(db: Session, entity_id: str, hours: int = 24) -> tuple[float, float]:
     return (float(row[0]) if row else 0.0, 0.0)
 
 
-def _baseline(db: Session, entity_id: str, metric: str, hours: int = 24) -> float | None:
-    """Per-point baseline storage first, then a 24 h mean, then None."""
-    row = db.execute(
+def _baseline(
+    db: Session, entity_id: str, metric: str, hours: int = 24
+) -> float | None:
+    """Per-point baseline storage first, then a 24 h mean, then None.
+
+    Single-entity path. Use _baselines() for any loop: against a remote
+    Postgres one round trip is ~0.5 s, so 88 of these is a 40 s request.
+    """
+    return _baselines(db, [entity_id], metric, hours=hours).get(entity_id)
+
+
+def _baselines(
+    db: Session, ids: list[str], metric: str, hours: int = 24
+) -> dict[str, float]:
+    """Batched baseline for many entities in ONE round trip.
+
+    Stored readings.baseline wins; absent that, the trailing mean. Entities with
+    neither are simply missing from the result, so callers use .get(id) or 0.
+    """
+    if not ids:
+        return {}
+    rows = db.execute(
         text(
-            "SELECT baseline FROM readings WHERE entity_id = :e AND metric = :m "
-            "AND baseline IS NOT NULL ORDER BY ts DESC LIMIT 1"
-        ),
-        {"e": entity_id, "m": metric},
-    ).first()
-    if row and row[0] is not None:
-        return float(row[0])
-    row = db.execute(
-        text(
-            "SELECT avg(value) FROM readings WHERE entity_id = :e AND metric = :m "
-            "AND ts >= :since"
+            """
+            WITH stored AS (
+                SELECT DISTINCT ON (entity_id) entity_id, baseline
+                FROM readings
+                WHERE entity_id = ANY(:ids) AND metric = :m AND baseline IS NOT NULL
+                ORDER BY entity_id, ts DESC
+            ), recent AS (
+                SELECT entity_id, avg(value) AS mean
+                FROM readings
+                WHERE entity_id = ANY(:ids) AND metric = :m AND ts >= :since
+                GROUP BY entity_id
+            )
+            SELECT t.entity_id, COALESCE(s.baseline, t.mean)
+            FROM recent t LEFT JOIN stored s USING (entity_id)
+            """
         ),
         {
-            "e": entity_id,
+            "ids": ids,
             "m": metric,
             "since": datetime.now(timezone.utc) - timedelta(hours=hours),
         },
-    ).first()
-    return float(row[0]) if row and row[0] is not None else None
+    ).fetchall()
+    return {r[0]: float(r[1]) for r in rows if r[1] is not None}
 
 
 def _open_ticket_count(db: Session) -> int:
@@ -99,6 +136,25 @@ def _open_ticket_count(db: Session) -> int:
             text("SELECT count(*) FROM tickets WHERE status IN ('open','assigned','in_progress')")
         ).scalar_one()
     )
+
+
+def _alert_state(db: Session) -> tuple[dict[str, str], dict[str, int]]:
+    """Per-entity worst active severity + active-alert count, in ONE query."""
+    rows = db.execute(
+        text(
+            """
+            SELECT entity_id, count(*) AS n,
+                   bool_or(severity IN ('critical','high')) AS is_bad
+            FROM alerts WHERE active IS TRUE GROUP BY entity_id
+            """
+        )
+    ).fetchall()
+    status: dict[str, str] = {}
+    counts: dict[str, int] = {}
+    for entity_id, n, is_bad in rows:
+        status[entity_id] = STATUS_CRITICAL if is_bad else STATUS_WARNING
+        counts[entity_id] = int(n)
+    return status, counts
 
 
 # --------------------------------------------------------------------------- #
@@ -114,24 +170,14 @@ def get_campus(db: Session = Depends(get_db)) -> schemas.Campus:
 
     bids = [b[0] for b in buildings]
     metrics = _metric_map(db, bids)
-    alerts = active_alert_status(db)
+    alerts, alert_counts = _alert_state(db)
 
     # active alert *count* per entity (the card shows a number, not a colour)
-    alert_counts = {
-        r[0]: int(r[1])
-        for r in db.execute(
-            text(
-                "SELECT entity_id, count(*) FROM alerts WHERE active IS TRUE "
-                "GROUP BY entity_id"
-            )
-        ).fetchall()
-    }
-
     cards: list[schemas.BuildingCard] = []
     for bid, name, nfloors, px, pz, w, d in buildings:
         m = metrics.get(bid, {})
         power = m.get("power_kw", 0.0)
-        baseline = m.get("power_kw_baseline") or _baseline(db, bid, "power_kw") or 0.0
+        baseline = m.get("power_kw_baseline") or 0.0
         cards.append(
             schemas.BuildingCard(
                 id=bid,
@@ -205,9 +251,7 @@ def get_building(building_id: str, db: Session = Depends(get_db)) -> schemas.Bui
     by_floor: dict[str, list[schemas.RoomSummary]] = {}
     for rid, name, rtype, fid, eq_count in rooms:
         m = metrics.get(rid, {})
-        baseline = m.get("power_kw_baseline")
-        if baseline is None:
-            baseline = _baseline(db, rid, "power_kw") or 0.0
+        baseline = m.get("power_kw_baseline") or 0.0
         by_floor.setdefault(fid, []).append(
             schemas.RoomSummary(
                 id=rid,
