@@ -1,0 +1,7 @@
+id,name,floors,pos_x,pos_z,width,depth,open_time,close_time,open_days
+B1,Main Academic Block,3,0,0,40,16,08:00,18:00,Mon-Sat
+B2,Computer & IT Block,3,30,30,24,16,08:00,20:00,Mon-Sat
+B3,Mechanical Workshop,1,-35,25,30,14,08:00,17:00,Mon-Sat
+B4,Library,2,-30,-25,20,20,08:00,22:00,Mon-Sun
+B5,Hostel,4,35,-30,18,28,00:00,23:59,Mon-Sun
+B6,Admin Block,2,0,40,22,12,09:00,18:00,Mon-Fri
