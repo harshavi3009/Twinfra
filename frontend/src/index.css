@@ -3,12 +3,12 @@
 /* Design tokens: dark indigo dashboard (violet accent, green/orange/pink status colours).
    Use as bg-bg, text-accent, border-line, etc. */
 @theme {
-  --color-bg: #1c1d35;
-  --color-panel: #262843;
-  --color-panel-2: #2e3150;
-  --color-line: #383c60;
-  --color-text: #f2f2fa;
-  --color-muted: #9b9dbb;
+  --color-bg: #3a3e46;
+  --color-panel: #474c56;
+  --color-panel-2: #525863;
+  --color-line: #626875;
+  --color-text: #f4f5f7;
+  --color-muted: #b3b8c3;
   --color-accent: #8b6cff;
   --color-ok: #3fd187;
   --color-warning: #f5a623;

@@ -1,13 +1,13 @@
 const inr = (n) => `₹${Math.round(n).toLocaleString('en-IN')}`
 
-// Each card gets its own muted warm colour pair (start -> end of the gradient).
+// Each card gets its own colour pair (start -> end of the gradient). Medium saturation, so they sit well on grey.
 const GRADIENTS = {
-  terracotta: ['#9c5a43', '#c07a5c'],
-  caramel: ['#8f6234', '#b98656'],
-  sand: ['#7d6a3c', '#a68f58'],
-  rose: ['#8a4a55', '#b56f7c'],
-  copper: ['#8e5130', '#b87a4f'],
-  brick: ['#7f3d37', '#a85f55'],
+  indigo: ['#4f46e5', '#7c74f0'],
+  ocean: ['#0e7490', '#2b8ba6'],
+  teal: ['#0f766e', '#2a9d8f'],
+  berry: ['#9d174d', '#be4b7a'],
+  amber: ['#b45309', '#d9822b'],
+  purple: ['#6d28d9', '#8b5cf6'],
 }
 
 function Kpi({ label, value, unit, sub, color }) {
@@ -36,14 +36,14 @@ export default function KpiStrip({ totals, alerts }) {
         label="Power now"
         value={totals.power_kw}
         unit="kW"
-        color="terracotta"
+        color="indigo"
         sub={`${over > 0 ? '↑' : '↓'} ${Math.abs(over).toFixed(1)}% vs baseline ${totals.baseline_kw} kW`}
       />
-      <Kpi label="Water" value={totals.water_lpm} unit="L/min" color="caramel" />
-      <Kpi label="Occupancy" value={totals.occupancy.toLocaleString('en-IN')} color="sand" />
-      <Kpi label="Active alerts" value={totals.active_alerts} color="rose" />
-      <Kpi label="Open tickets" value={totals.open_tickets} color="copper" />
-      <Kpi label="₹ wasted / month (est.)" value={inr(wasted)} color="brick" sub="Sum of active alerts" />
+      <Kpi label="Water" value={totals.water_lpm} unit="L/min" color="ocean" />
+      <Kpi label="Occupancy" value={totals.occupancy.toLocaleString('en-IN')} color="teal" />
+      <Kpi label="Active alerts" value={totals.active_alerts} color="berry" />
+      <Kpi label="Open tickets" value={totals.open_tickets} color="amber" />
+      <Kpi label="₹ wasted / month (est.)" value={inr(wasted)} color="purple" sub="Sum of active alerts" />
     </div>
   )
 }
