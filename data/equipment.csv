@@ -326,4 +326,4 @@ EQ-0324,B6-F2-R05,B6,Ac 24,ac,1.86,Civil,Prof. C,2024-10-29,2029-10-28,medium,ru
 EQ-0325,B6-F2-R05,B6,Lighting 25,lighting,0.41,Civil,Prof. A,2024-03-13,2029-03-12,low,running,6000
 EQ-0326,B6-F1-R01,B6,Lift 26,lift,4.17,Mechanical,Prof. X,2019-03-20,2023-03-19,high,running,900000
 EQ-0327,B6-F1-R01,B6,Water Cooler 27,water_cooler,0.94,Hostel,Prof. Z,2022-02-03,2027-02-02,low,running,18000
-EQ-0328,,,Substation Transformer 1,transformer,231.09,Electrical,Er. S. Bhosale,1998-04-01,2008-04-01,critical,running,1800000
+EQ-0328,B3-F1-R04,B3,Substation Transformer 1,transformer,231.09,Electrical,Er. S. Bhosale,1998-04-01,2008-04-01,critical,running,1800000

@@ -9,9 +9,11 @@ Contract: docs/contract/api.md  ("Insights" section)
 
 from __future__ import annotations
 
-from fastapi import APIRouter, HTTPException
+from fastapi import APIRouter, Depends, HTTPException
 from pydantic import BaseModel, Field
+from sqlalchemy.orm import Session
 
+from ..db import get_db
 from . import faults, reporting
 
 router = APIRouter(prefix="/api/insights", tags=["insights"])
@@ -51,39 +53,57 @@ def reset_faults() -> dict:
     return {"cleared": True}
 
 
-def clear_fault(entity_id: str) -> None:
+def clear_fault(entity_id: str, db: Session | None = None) -> None:
     """Called by POST /api/tickets/{id}/complete.
 
     When an entity is repaired, drop its active faults so the simulator stops
     replaying them and verification can confirm the readings went back to normal.
     """
     faults.clear_fault(entity_id)
-    reporting.clear_alert_state(entity_id)
+    if db is not None:
+        reporting.clear_alert_state(db, entity_id)
 
 
 # ------------------------------------------------------------------ stubs (D3/D4)
 
 
+class WhatIfRequest(BaseModel):
+    action: str = Field(..., description="led_retrofit | schedule_ac | fix_ghost_load | solar_roof")
+    entity_id: str | None = None
+
+
 @router.get("/alerts")
-def alerts(active: bool = True) -> list[dict]:
-    return reporting.get_alerts(active=active)
+def alerts(active: bool = True, db: Session = Depends(get_db)) -> list[dict]:
+    """Active alerts, each with the entity's display name and ticket id."""
+    return reporting.get_alerts(db, active=active)
 
 
 @router.post("/run")
-def run_insights() -> dict:
-    return reporting.run_all()
+def run_insights(db: Session = Depends(get_db)) -> dict:
+    """Run the whole D3 pipeline once: detect, alert, ticket, predict, verify."""
+    return reporting.run_all(db)
 
 
 @router.get("/interventions")
-def interventions() -> list[dict]:
-    return reporting.get_interventions()
+def interventions(db: Session = Depends(get_db)) -> list[dict]:
+    """Ranked fixes with monthly saving and payback."""
+    return reporting.get_interventions(db)
+
+
+@router.post("/whatif")
+def whatif(body: WhatIfRequest, db: Session = Depends(get_db)) -> dict:
+    """'What if we did X?' - baseline vs projected, per building."""
+    try:
+        return reporting.whatif(db, body.action, body.entity_id)
+    except ValueError as exc:
+        raise HTTPException(status_code=400, detail=str(exc)) from exc
 
 
 @router.get("/reports/sustainability")
-def sustainability(days: int = 30) -> dict:
-    return reporting.sustainability(days=days)
+def sustainability(days: int = 30, db: Session = Depends(get_db)) -> dict:
+    return reporting.sustainability(db, days=days)
 
 
 @router.get("/reports/asset-health")
-def asset_health() -> dict:
-    return reporting.asset_health()
+def asset_health(db: Session = Depends(get_db)) -> dict:
+    return reporting.asset_health(db)

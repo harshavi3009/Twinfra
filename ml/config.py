@@ -59,7 +59,8 @@ ROOM_MIX = {
            ("office", 2, (0.4, 1.2), 8),
            ("server_room", 1, (5.0, 8.0), 2)],
     "B3": [("workshop", 2, (8.0, 18.0), 30),
-           ("office", 1, (0.4, 1.2), 8)],
+           ("office", 1, (0.4, 1.2), 8),
+           ("utility_room", 1, (0.0, 0.0), 0)],
     "B4": [("library_hall", 3, (2.0, 4.0), 120),
            ("office", 1, (0.4, 1.2), 8)],
     "B5": [("hostel_room", 8, (0.3, 0.8), 4),
@@ -77,11 +78,14 @@ EQUIPMENT_MIX = {
     "library_hall": [("ac", 2, (2.2, 3.5)), ("lighting", 1, (0.8, 1.5))],
     "hostel_room": [("ac", 1, (0.9, 1.5)), ("lighting", 1, (0.1, 0.3))],
     "server_room": [("server_rack", 2, (1.5, 3.0)), ("ac", 2, (2.2, 3.5))],
+    # the transformer itself is added by UTILITY_EQUIPMENT, not by the mix
+    "utility_room": [],
 }
 
 # Building-level utility equipment (one per building)
 BUILDING_EQUIPMENT = [("lift", 1, (3.0, 5.0)), ("water_cooler", 1, (0.5, 1.0))]
-# Substation transformer
+# Substation transformer. It physically sits in B3's utility room, because
+# equipment.building_id is NOT NULL in the schema.
 UTILITY_EQUIPMENT = [("transformer", 1, (200.0, 250.0))]
 
 EQ_TYPES = ["ac", "lighting", "computers", "pump", "transformer", "lathe",

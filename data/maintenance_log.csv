@@ -412,7 +412,7 @@ id,equipment_id,date,action,cost,technician_id,notes
 684,EQ-0279,2026-05-13,repair,4500,T-005,routine
 499,EQ-0207,2026-05-13,repair,5000,T-001,routine
 246,EQ-0105,2026-05-13,repair,4500,T-008,routine
-817,EQ-0001,2026-05-14,repair,4500,T-002,compressor
+817,EQ-0001,2026-05-14,repair,3500,T-002,compressor
 200,EQ-0089,2026-05-15,inspection,2500,T-005,routine
 173,EQ-0076,2026-05-15,repair,5000,T-006,routine
 101,EQ-0043,2026-05-15,part_replaced,4000,T-003,routine
@@ -762,7 +762,7 @@ id,equipment_id,date,action,cost,technician_id,notes
 689,EQ-0281,2026-09-29,part_replaced,3000,T-007,routine
 310,EQ-0130,2026-09-30,service,6000,T-004,routine
 351,EQ-0147,2026-09-30,inspection,6000,T-004,routine
-819,EQ-0001,2026-10-01,repair,4000,T-002,compressor
+819,EQ-0001,2026-10-01,repair,5500,T-002,compressor
 39,EQ-0015,2026-10-01,repair,2000,T-001,routine
 204,EQ-0091,2026-10-01,part_replaced,8000,T-006,routine
 358,EQ-0149,2026-10-02,inspection,3000,T-007,routine
