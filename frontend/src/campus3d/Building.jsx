@@ -7,6 +7,7 @@ import Floor from './Floor'
 import AlertBeacon from './AlertBeacon'
 import { useDelayedReady } from './useDelayedReady'
 import RoomGrid from './RoomGrid'
+import { dayNightColors, useNightAmount } from './DayNight'
 
 // Soft radial glow texture, built once and shared by every building's ground halo.
 let glowTexture
@@ -156,7 +157,7 @@ export default function Building({
   const hoverRef = useRef(0) // 0..1 eased
   const hoverWanted = useRef(false)
   const explode = useRef(0) // 0 stacked .. 1 exploded
-  const nightAmt = useRef(0) // 0 day .. 1 night, eased
+  const nightAmount = useNightAmount(night) // 0 day .. 1 night, eased
   const floorRefs = useRef([])
   const labelRef = useRef()
   const critical = status === 'critical'
@@ -174,8 +175,10 @@ export default function Building({
     const pulse = critical ? 0.5 + 0.5 * Math.sin(clock.elapsedTime * 4) : 0
     applyLook(mats, current.current, pulse, l, hoverRef.current)
 
-    nightAmt.current += ((night ? 1 : 0) - nightAmt.current) * k
-    mats.window.color.setScalar(1 + nightAmt.current * 2.5) // multiplies the per-window colour, so lit windows glow at night
+    const n = nightAmount.current
+    mats.window.color.setScalar(1 + n * 2.5) // multiplies the per-window colour, so lit windows glow at night
+    mats.body.color.lerpColors(dayNightColors.body.day, dayNightColors.body.night, n)
+    mats.slab.color.lerpColors(dayNightColors.slab.day, dayNightColors.slab.night, n)
 
     // explode / collapse floors
     explode.current += ((selected ? 1 : 0) - explode.current) * (1 - Math.exp(-dt * 3.5))

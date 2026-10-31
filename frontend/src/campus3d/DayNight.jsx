@@ -1,26 +1,48 @@
 import { useRef } from 'react'
 import { useFrame } from '@react-three/fiber'
 import * as THREE from 'three'
+import { PALETTE } from './constants'
 
-// Sky, fog and lights for day and night. The change is eased over about a second.
-// Day sky is a mid blue, kept below the bloom threshold so it doesn't haze the scene.
-const DAY = { bg: '#3d5f8c', ambient: 1.0, hemi: 1.1, sun: 1.5 }
-const NIGHT = { bg: '#000104', ambient: 0.04, hemi: 0.03, sun: 0.03 }
+// Sky, fog, lights and surfaces for day and night. Everything eases over about a second.
+const DAY = { bg: '#dfeaf6', ambient: 1.4, hemi: 1.6, sun: 2.2, ground: '#b8c7b0', body: '#7d95b5', slab: '#c9d6e6' }
+const NIGHT = { bg: '#000104', ambient: 0.04, hemi: 0.03, sun: 0.03, ground: PALETTE.ground, body: PALETTE.body, slab: PALETTE.slab }
 
-const DAY_BG = new THREE.Color(DAY.bg)
-const NIGHT_BG = new THREE.Color(NIGHT.bg)
+const colorOf = (hex) => new THREE.Color(hex)
+const DAY_BG = colorOf(DAY.bg)
+const NIGHT_BG = colorOf(NIGHT.bg)
+const DAY_GROUND = colorOf(DAY.ground)
+const NIGHT_GROUND = colorOf(NIGHT.ground)
+const DAY_BODY = colorOf(DAY.body)
+const NIGHT_BODY = colorOf(NIGHT.body)
+const DAY_SLAB = colorOf(DAY.slab)
+const NIGHT_SLAB = colorOf(NIGHT.slab)
 
-// night = false (day) or true (night). Each frame the look moves a fraction of the way to the target.
+// Returns a ref holding 0 (day) .. 1 (night), eased toward `night` every frame.
+export function useNightAmount(night) {
+  const amount = useRef(0)
+  useFrame((_, dt) => {
+    amount.current += ((night ? 1 : 0) - amount.current) * (1 - Math.exp(-dt * 2.5))
+  })
+  return amount
+}
+
+// Colours for the parts that change between day and night (used by Ground and Building).
+export const dayNightColors = {
+  ground: { day: DAY_GROUND, night: NIGHT_GROUND },
+  body: { day: DAY_BODY, night: NIGHT_BODY },
+  slab: { day: DAY_SLAB, night: NIGHT_SLAB },
+}
+
+// night = false (day) or true (night).
 export default function DayNight({ night = false }) {
   const bgRef = useRef()
   const fogRef = useRef()
   const ambientRef = useRef()
   const hemiRef = useRef()
   const sunRef = useRef()
-  const amount = useRef(0) // 0 = day, 1 = night
+  const amount = useNightAmount(night)
 
-  useFrame((_, dt) => {
-    amount.current += ((night ? 1 : 0) - amount.current) * (1 - Math.exp(-dt * 2.5))
+  useFrame(() => {
     const t = amount.current
     const mix = (a, b) => a + (b - a) * t
 
@@ -36,9 +58,9 @@ export default function DayNight({ night = false }) {
       <color attach="background" ref={bgRef} args={[DAY.bg]} />
       <fog attach="fog" ref={fogRef} args={[DAY.bg, 140, 330]} />
 
-      <ambientLight ref={ambientRef} intensity={DAY.ambient} color="#8aa4ff" />
-      <hemisphereLight ref={hemiRef} args={['#9db8ff', '#0b1020', DAY.hemi]} />
-      <directionalLight ref={sunRef} position={[70, 120, 50]} intensity={DAY.sun} color="#cfe0ff" />
+      <ambientLight ref={ambientRef} intensity={DAY.ambient} color="#ffffff" />
+      <hemisphereLight ref={hemiRef} args={['#ffffff', '#8aa0b8', DAY.hemi]} />
+      <directionalLight ref={sunRef} position={[70, 120, 50]} intensity={DAY.sun} color="#fff6e6" />
     </>
   )
 }

@@ -116,7 +116,7 @@ export function Campus3D({
       >
         <DayNight night={night} />
 
-        <Ground buildings={buildings} />
+        <Ground buildings={buildings} night={night} />
         <Trees buildings={buildings} utilities={utilities} />
         {buildings.map((b, i) => {
           const selected = b.id === selection.buildingId
@@ -163,7 +163,7 @@ export function Campus3D({
           selection={selection}
           overviewTarget={overviewTarget}
         />
-        <Effects />
+        <Effects night={night} />
       </Canvas>
 
       {whatIf && <div style={simTag}>SIMULATED</div>}
