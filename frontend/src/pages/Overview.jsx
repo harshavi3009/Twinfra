@@ -1,44 +1,41 @@
-import { useEffect, useState } from 'react'
-import { getCampus } from '../api/client.js'
+import { useState } from 'react'
+import { getAlerts, getCampus } from '../api/client.js'
+import AlertCard from '../components/AlertCard.jsx'
+import KpiStrip from '../components/KpiStrip.jsx'
+import { usePolling } from '../hooks/usePolling.js'
 import { Campus3D } from '../campus3d/index.jsx'
 
-function Kpi({ label, value, unit, tone = 'text-text' }) {
-  return (
-    <div className="rounded-lg border border-line bg-panel p-4">
-      <div className="text-xs uppercase tracking-wide text-muted">{label}</div>
-      <div className={`mt-1 font-mono text-2xl font-medium ${tone}`}>
-        {value}
-        {unit && <span className="ml-1 text-sm text-muted">{unit}</span>}
-      </div>
-    </div>
-  )
-}
-
 export default function Overview() {
-  const [campus, setCampus] = useState(null)
-  const [error, setError] = useState(null)
+  const { data: campus, error } = usePolling(getCampus)
+  const { data: alerts } = usePolling(() => getAlerts(true))
+  // Selection state lives here; the 3D view and the right panel both use it.
+  const [selection, setSelection] = useState({ buildingId: null, floorId: null, roomId: null, equipmentId: null })
 
-  useEffect(() => {
-    getCampus().then(setCampus).catch((e) => setError(e.message))
-  }, [])
+  if (!campus) {
+    return error ? <p className="text-critical">Could not load campus: {error}</p> : <p className="text-muted">Loading…</p>
+  }
 
-  if (error) return <p className="text-critical">Could not load campus: {error}</p>
-  if (!campus) return <p className="text-muted">Loading…</p>
-
-  const t = campus.totals
-  const overPct = ((t.power_kw / t.baseline_kw - 1) * 100).toFixed(1)
+  const selectEntity = (entityId) => {
+    // Alert entity ids look like B1 / B1-F1-R01: derive the building from the prefix.
+    setSelection({ buildingId: entityId.split('-')[0], floorId: null, roomId: null, equipmentId: null })
+  }
 
   return (
     <div className="flex h-full flex-col gap-4">
-      <div className="grid grid-cols-2 gap-3 md:grid-cols-5">
-        <Kpi label="Power now" value={t.power_kw} unit="kW" tone={overPct > 0 ? 'text-critical' : 'text-ok'} />
-        <Kpi label="vs baseline" value={`${overPct > 0 ? '↑' : '↓'} ${Math.abs(overPct)}`} unit="%" tone={overPct > 0 ? 'text-critical' : 'text-ok'} />
-        <Kpi label="Water" value={t.water_lpm} unit="L/min" />
-        <Kpi label="Occupancy" value={t.occupancy} />
-        <Kpi label="Active alerts" value={t.active_alerts} tone="text-warning" />
-      </div>
-      <div className="min-h-64 flex-1">
-        <Campus3D campus={campus} selection={null} onSelect={() => {}} />
+      <KpiStrip totals={campus.totals} alerts={alerts} />
+      <div className="flex min-h-0 flex-1 gap-4">
+        <div className="min-h-64 min-w-0 flex-1">
+          <Campus3D campus={campus} selection={selection} onSelect={setSelection} />
+        </div>
+        <aside className="flex w-96 shrink-0 flex-col gap-2 overflow-auto">
+          <h2 className="text-sm font-semibold uppercase tracking-wide text-muted">
+            {selection.buildingId ? `Selected: ${selection.buildingId}` : 'Top alerts'}
+          </h2>
+          {(alerts || []).map((a) => (
+            <AlertCard key={a.id} alert={a} onSelect={selectEntity} />
+          ))}
+          {alerts?.length === 0 && <p className="text-sm text-muted">No active alerts.</p>}
+        </aside>
       </div>
     </div>
   )
