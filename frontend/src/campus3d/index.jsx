@@ -145,7 +145,11 @@ export function Campus3D({
           overviewTarget={overviewTarget}
         />
         {gestureCommand && (
-          <GestureCameraBridge commandRef={gestureCommand} onPick={onGesturePick} />
+          <GestureCameraBridge
+            commandRef={gestureCommand}
+            onPick={onGesturePick}
+            buildings={buildings}
+          />
         )}
         <Effects />
       </Canvas>

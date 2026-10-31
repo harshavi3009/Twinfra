@@ -29,7 +29,17 @@ import { useRef } from 'react'
 import { useThree, useFrame } from '@react-three/fiber'
 import * as THREE from 'three'
 
-export default function GestureCameraBridge({ commandRef, onPick }) {
+/**
+ * How far the camera moves per unit of palm movement. Tuned by feel: too low and
+ * panning appears to do nothing, too high and the campus flies off screen.
+ */
+const GAIN = {
+  rotate: 0.6,   // radians per palm delta
+  pan: 90,       // world units per palm delta
+  zoom: 0.6,     // fraction of current distance per (1 - factor)
+}
+
+export default function GestureCameraBridge({ commandRef, onPick, buildings = null }) {
   const { camera, controls, scene } = useThree()
 
   const raycaster = useRef(new THREE.Raycaster())
@@ -45,18 +55,32 @@ export default function GestureCameraBridge({ commandRef, onPick }) {
     raycaster.current.setFromCamera(ndc.current, camera)
     const hits = raycaster.current.intersectObjects(scene.children, true)
 
-    // Preferred: an object (or ancestor) declaring userData.entityId.
-    // Fallback: report the hit point so nothing breaks before Rishi adds it.
-    let picked = null
+    // Preferred: an object (or ancestor) declaring userData.entityId. Rishi can
+    // add that to the building group at any time and this picks it up first.
     for (const hit of hits) {
       let node = hit.object
       while (node && !node.userData?.entityId) node = node.parent
       if (node?.userData?.entityId) {
-        picked = node.userData.entityId
-        break
+        onPick?.(node.userData.entityId)
+        return
       }
     }
-    onPick?.(picked ?? (hits.length ? { position: hits[0].point } : null))
+
+    // Fallback while that lands: work out which building was hit from its
+    // position. Buildings are axis-aligned boxes on the known campus layout, so
+    // a simple point-in-footprint test is exact and needs nothing from Rishi.
+    if (hits.length && buildings?.length) {
+      const p = hits[0].point
+      const b = buildings.find(
+        (bld) =>
+          Math.abs(p.x - bld.position.x) <= bld.size.w / 2 + 0.5 &&
+          Math.abs(p.z - bld.position.z) <= bld.size.d / 2 + 0.5,
+      )
+      onPick?.(b ? b.id : null)
+      return
+    }
+
+    onPick?.(null)
   }
 
   useFrame(() => {
@@ -76,7 +100,7 @@ export default function GestureCameraBridge({ commandRef, onPick }) {
       } else if (cmd.name === 'zoom') {
         // arg is a multiplier; convert to a signed dolly step using current range
         const dist = camera.position.distanceTo(controls.target)
-        pending.current.dolly += (1 - cmd.arg) * dist * 0.6
+        pending.current.dolly += (1 - cmd.arg) * dist * GAIN.zoom
       } else if (cmd.name === 'select') {
         pick(cmd.arg)
       }
@@ -85,12 +109,12 @@ export default function GestureCameraBridge({ commandRef, onPick }) {
     // ---- 2. drain the accumulated motion ----
     const p = pending.current
     if (p.orbit[0] || p.orbit[1]) {
-      controls.rotate(-p.orbit[0] * 0.6, -p.orbit[1] * 0.4, false)
+      controls.rotate(-p.orbit[0] * GAIN.rotate, -p.orbit[1] * GAIN.rotate * 0.7, false)
       p.orbit[0] = 0
       p.orbit[1] = 0
     }
     if (p.pan[0] || p.pan[1]) {
-      controls.truck(-p.pan[0] * 12, p.pan[1] * 12, false)
+      controls.truck(-p.pan[0] * GAIN.pan, p.pan[1] * GAIN.pan, false)
       p.pan[0] = 0
       p.pan[1] = 0
     }

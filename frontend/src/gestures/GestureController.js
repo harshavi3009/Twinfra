@@ -68,6 +68,7 @@ export class GestureController {
     this.stillSince = null
 
     this.lastGesture = 'none'
+    this.lastGestureAt = 0
   }
 
   /**
@@ -89,21 +90,24 @@ export class GestureController {
     // ---- two hands: zoom ----
     if (mirrored.length >= 2) {
       const dist = twoHandDistance(mirrored)
-      if (this.prevTwo) {
-        const ratio = dist / this.prevTwo
-        if (Math.abs(ratio - 1) > this.tuning.zoomDeadZone) {
-          // hands apart -> ratio > 1 -> we want to zoom IN -> command factor < 1
-          const clamped = Math.max(0.8, Math.min(1.25, ratio))
-          this.send('zoom', 1 / clamped)
+      // A tiny distance means one detection is junk; skip rather than emit a
+      // wild ratio that yanks the camera.
+      if (dist > 0.02) {
+        if (this.prevTwo) {
+          const ratio = dist / this.prevTwo
+          if (Math.abs(ratio - 1) > this.tuning.zoomDeadZone) {
+            // hands apart -> ratio > 1 -> zoom IN -> command factor < 1
+            const clamped = Math.max(0.8, Math.min(1.25, ratio))
+            this.send('zoom', 1 / clamped)
+          }
         }
+        this.prevTwo = dist
       }
-      this.prevTwo = dist
       this.prevPalm = null
       this.smoothPalm = null
-      this.candidate = null
-      this.candidateCount = 0
-      this.stable = 'zoom'
       this.lastGesture = 'zoom'
+      this.lastGestureAt = t
+      this.stable = 'zoom'
       return 'zoom'
     }
 
@@ -112,6 +116,13 @@ export class GestureController {
     // ---- one hand ----
     const lm = mirrored[0]
     const raw = classify(lm)
+    // Coming back from two-hand zoom, the last gesture was "zoom"; seed the
+    // stabiliser so returning to a fist does not need three more frames.
+    if (this.stable === 'zoom') {
+      this.stable = raw
+      this.candidate = raw
+      this.candidateCount = this.tuning.stableFrames
+    }
     const gesture = this.stabilise(raw)
 
     const palm = palmCenter(lm)
@@ -129,9 +140,10 @@ export class GestureController {
       ])
       this.send('cursor', null)
     } else if (gesture === 'fist') {
-      // pan only once we were already panning, so the first frame after the
-      // switch does not jump by the whole distance from the previous position
-      if (this.prevPalm && this.lastGesture === 'fist') {
+      // `prevPalm` is only kept for open/fist, so it is already null on the
+      // frame we switch gestures -- no need to also gate on lastGesture, which
+      // cost us the whole first pan frame.
+      if (this.prevPalm) {
         this.send('pan', [
           (this.smoothPalm[0] - this.prevPalm[0]) * this.tuning.panGain,
           (this.smoothPalm[1] - this.prevPalm[1]) * this.tuning.panGain,

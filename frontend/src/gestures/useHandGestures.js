@@ -56,6 +56,16 @@ export function useHandGestures({ enabled = false, videoRef, onCommand } = {}) {
       video,
       onHands: (hands) => {
         const g = controllerRef.current?.update(hands)
+        // Type __gestureDebug(true) in the browser console to see what MediaPipe
+        // reports and which gesture the classifier chose -- the fastest way to
+        // tell a detection problem from a camera problem.
+        if (globalThis.__GESTURE_DEBUG__) {
+          console.log('[gestures]', {
+            hands: hands.length,
+            gesture: g,
+            stable: controllerRef.current?.stable,
+          })
+        }
         // React only re-renders when the name actually changes
         if (g !== undefined) setGesture((prev) => (prev === g ? prev : g))
       },

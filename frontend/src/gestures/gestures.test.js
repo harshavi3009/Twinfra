@@ -8,7 +8,7 @@
 import { test } from 'node:test'
 import assert from 'node:assert/strict'
 
-import { classify, palmCenter, twoHandDistance, handSize } from './classify.js'
+import { classify, palmCenter, twoHandDistance, handSize, fingerRatios } from './classify.js'
 import { GestureController } from './GestureController.js'
 
 // ---------------------------------------------------------------- helpers
@@ -17,7 +17,7 @@ import { GestureController } from './GestureController.js'
  * Build 21 fake landmarks for a hand of a given pose.
  * Coordinates are 0..1 image space with y growing downward.
  */
-function makeHand({ open = 0, thumbOut = false, pinch = false, cx = 0.5, cy = 0.5, scale = 1 } = {}) {
+function makeHand({ open = 0, reach = null, thumbOut = false, pinch = false, cx = 0.5, cy = 0.5, scale = 1 } = {}) {
   const s = 0.1 * scale // hand size in image units
   const lm = new Array(21).fill(null).map(() => [cx, cy])
 
@@ -37,18 +37,14 @@ function makeHand({ open = 0, thumbOut = false, pinch = false, cx = 0.5, cy = 0.
 
   fingers.forEach(([tip, joint, dx], i) => {
     const knuckle = lm[[5, 9, 13, 17][i]]
-    if (i < open) {
-      // extended: tip is far from the wrist
-      lm[joint] = [knuckle[0] + dx * s * 0.4, knuckle[1] - s * 0.4]
-      lm[tip] = [knuckle[0] + dx * s * 0.6, knuckle[1] - s * 1.0]
-    } else {
-      // curled: tip is tucked back toward the wrist
-      lm[joint] = [knuckle[0] + dx * s * 0.3, knuckle[1] - s * 0.2]
-      lm[tip] = [knuckle[0] + dx * s * 0.2, knuckle[1] + s * 0.1]
-    }
+    // `reach` 1 = fully straight, 0 = fully curled. Real hands sit in between.
+    const r = reach ? reach[i] : i < open ? 1 : 0
+    lm[joint] = [knuckle[0] + dx * s * 0.3, knuckle[1] - s * 0.3]
+    lm[tip] = [knuckle[0] + dx * s * 0.3, knuckle[1] - s * (0.1 + 0.9 * r)]
   })
 
-  // thumb
+  // thumb. A tucked thumb must NOT coincide with the index tip, or every fist
+  // would look like a pinch -- that is a real bug the classifier had.
   if (pinch) {
     lm[3] = [cx - s * 0.2, cy + s * 0.35]
     lm[4] = lm[8] // thumb tip touches index tip
@@ -56,8 +52,8 @@ function makeHand({ open = 0, thumbOut = false, pinch = false, cx = 0.5, cy = 0.
     lm[3] = [cx - s * 0.5, cy + s * 0.2]
     lm[4] = [cx - s * 0.7, cy - s * 0.2]
   } else {
-    lm[3] = [cx - s * 0.15, cy + s * 0.5]
-    lm[4] = [cx - s * 0.2, cy + s * 0.35]
+    lm[3] = [cx - s * 0.45, cy + s * 0.45]
+    lm[4] = [cx - s * 0.62, cy + s * 0.55]
   }
 
   return lm
@@ -293,4 +289,31 @@ test('zoom emits repeatedly while the hands keep moving', () => {
   const zooms = h.sent.filter((s) => s.name === 'zoom')
   assert.ok(zooms.length >= 3, `expected several zoom commands, got ${zooms.length}`)
   for (const z of zooms) assert.ok(z.arg < 1, 'hands apart must zoom in')
+})
+
+
+// ---------------------------------------------------------------- real hands
+
+test('a sloppy fist still reads as a fist', () => {
+  // Real fists never fold perfectly: the fingertips sit slightly past the middle
+  // joint. An absolute threshold called this a "point", which is why pan did not
+  // work. Comparison between fingers fixes it.
+  assert.equal(classify(makeHand({ reach: [0.35, 0.3, 0.3, 0.3] })), 'fist')
+})
+
+test('a sloppy peace sign still reads as peace', () => {
+  // Same story: ring and pinky do not fully curl, and used to score above the
+  // open threshold, so the whole hand was classified as an open palm -- which is
+  // why the explode toggle never fired.
+  assert.equal(classify(makeHand({ reach: [1, 1, 0.45, 0.4] })), 'peace')
+})
+
+test('a closed fist is not mistaken for a pinch', () => {
+  assert.equal(classify(makeHand({ reach: [0, 0, 0, 0] })), 'fist')
+})
+
+test('fingers are ranked by straightness', () => {
+  const peace = makeHand({ reach: [1, 1, 0.3, 0.3] })
+  const r = fingerRatios(peace)
+  assert.ok(r[0] > r[2] && r[1] > r[3], `expected index/middle straighter: ${r}`)
 })
