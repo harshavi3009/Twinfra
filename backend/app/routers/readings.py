@@ -132,6 +132,51 @@ def _compute_band(points: list[schemas.ReadingPoint], entity_id: str, metric: st
         return (round(max(mean - 2 * std, 0.0), 3), round(mean + 2 * std, 3))
 
 
+def _dedupe(rows: list[dict], errors: list[dict] | None = None) -> list[dict]:
+    """Collapse duplicate (entity_id, metric, ts) to one row, last one wins.
+
+    Postgres rejects a batch that touches the same conflict target twice:
+    "ON CONFLICT DO UPDATE command cannot affect row a second time". A simulator
+    replaying a window, or a CSV with a repeated line, hits this on every run,
+    so de-duplication has to happen before the statement is built.
+
+    Last-wins matches `ON CONFLICT DO UPDATE` semantics for two separate
+    requests, so a batch gives the same result as sending the rows one by one.
+    """
+    seen: dict[tuple, dict] = {}
+    for row in rows:
+        key = (row["entity_id"], row["metric"], row["ts"])
+        if key in seen and errors is not None:
+                errors.append(
+                    {
+                        "row": row.get("_row"),
+                        "problem": (
+                            f"duplicate of earlier row for {key[0]}/{key[1]}/{key[2]}"
+                            " - kept the later value"
+                        ),
+                    }
+                )
+        seen[key] = row
+    return list(seen.values())
+
+
+def _known_entities(db: Session) -> set[str]:
+    """Every entity a reading may point at.
+
+    One query. Used by both the simulator POST and the CSV import so they can't
+    drift apart - previously only the CSV path validated entity_id, which let
+    the simulator create readings for entities that do not exist.
+    """
+    rows = db.execute(
+        text(
+            "SELECT id FROM buildings UNION SELECT id FROM rooms "
+            "UNION SELECT id FROM equipment "
+            "UNION SELECT 'UT-SUB' UNION SELECT 'UT-TANK'"
+        )
+    ).fetchall()
+    return {r[0] for r in rows}
+
+
 # --------------------------------------------------------------------------- #
 # POST /api/readings  (simulator)
 # --------------------------------------------------------------------------- #
@@ -142,26 +187,43 @@ def post_readings(batch: ReadingsBatch, db: Session = Depends(get_db)) -> dict:
     Needs ux_readings_entity_metric_ts, created by app.create_tables.
     """
     if not batch.readings:
-        return {"inserted": 0, "upserted": 0}
+        return {"inserted": 0, "upserted": 0, "skipped": 0, "errors": []}
 
-    unknown = sorted({r.metric for r in batch.readings} - KNOWN_METRICS)
-    if unknown:
+    errors: list[dict] = []
+
+    unknown_metrics = sorted({r.metric for r in batch.readings} - KNOWN_METRICS)
+    if unknown_metrics:
         raise HTTPException(
             status_code=400,
-            detail=f"unknown metric(s) {unknown}; expected one of {sorted(KNOWN_METRICS)}",
+            detail=(
+                f"unknown metric(s) {unknown_metrics}; "
+                f"expected one of {sorted(KNOWN_METRICS)}"
+            ),
         )
 
-    rows = [
-        {
-            "ts": r.ts,
-            "entity_id": r.entity_id,
-            "metric": r.metric,
-            "value": r.value,
-            "baseline": r.baseline,
-            "source": "sim",
-        }
-        for r in batch.readings
-    ]
+    known = _known_entities(db)
+    rows: list[dict] = []
+    for i, r in enumerate(batch.readings):
+        if r.entity_id not in known:
+            errors.append({"row": i, "problem": f"unknown entity_id {r.entity_id}"})
+            continue
+        rows.append(
+            {
+                "ts": r.ts,
+                "entity_id": r.entity_id,
+                "metric": r.metric,
+                "value": r.value,
+                "baseline": r.baseline,
+                "source": "sim",
+                "_row": i,
+            }
+        )
+
+    # Unknown entities are reported, not fatal: one bad row in a simulator
+    # batch must not discard the 200 good ones.
+    rows = _dedupe(rows, errors)
+    if not rows:
+        return {"inserted": 0, "upserted": 0, "skipped": len(errors) or 0, "errors": errors}
 
     existing = db.execute(
         text(
@@ -179,7 +241,8 @@ def post_readings(batch: ReadingsBatch, db: Session = Depends(get_db)) -> dict:
 
     from ..models import Reading
 
-    ins = pg_insert(Reading).values(rows)
+    payload = [{k: v for k, v in r.items() if k != "_row"} for r in rows]
+    ins = pg_insert(Reading).values(payload)
     ins = ins.on_conflict_do_update(
         index_elements=["entity_id", "metric", "ts"],
         set_={
@@ -191,7 +254,11 @@ def post_readings(batch: ReadingsBatch, db: Session = Depends(get_db)) -> dict:
     db.execute(ins)
     db.commit()
 
-    return {"inserted": len(rows) - int(existing), "upserted": int(existing)}
+    return {
+        "inserted": len(rows) - int(existing),
+        "upserted": int(existing),
+        "errors": errors[:50],
+    }
 
 
 # --------------------------------------------------------------------------- #
@@ -227,16 +294,7 @@ async def import_csv(
     if "baseline" not in df.columns:
         df["baseline"] = None
 
-    known = {
-        r[0]
-        for r in db.execute(
-            text(
-                "SELECT id FROM buildings UNION SELECT id FROM rooms "
-                "UNION SELECT id FROM equipment UNION SELECT 'UT-SUB' "
-                "UNION SELECT 'UT-TANK'"
-            )
-        ).fetchall()
-    }
+    known = _known_entities(db)
 
     parsed: list[dict] = []
     for i, row in df.iterrows():
@@ -264,19 +322,37 @@ async def import_csv(
                 "value": value,
                 "baseline": None if pd.isna(baseline) else float(baseline),
                 "source": "csv",
+                "_row": rownum,
             }
         )
+
+    parsed = _dedupe(parsed, errors)
 
     out: dict = {
         "rows": int(len(df)),
         "valid": len(parsed),
         "errors": errors[:50],
         "commit": False,
-        "preview": parsed[:5],
+        "preview": [{k: v for k, v in r.items() if k != "_row"} for r in parsed[:5]],
     }
 
     if commit and parsed:
-        stmt = pg_insert(Reading).values(parsed)
+        payload = [{k: v for k, v in r.items() if k != "_row"} for r in parsed]
+        existing = db.execute(
+            text(
+                "SELECT count(*) FROM readings WHERE (entity_id, metric, ts) IN ("
+                "  SELECT * FROM unnest("
+                "    CAST(:ids AS text[]), CAST(:metrics AS text[]), CAST(:tss AS timestamptz[]))"
+                ")"
+            ),
+            {
+                "ids": [r["entity_id"] for r in payload],
+                "metrics": [r["metric"] for r in payload],
+                "tss": [r["ts"] for r in payload],
+            },
+        ).scalar_one()
+
+        stmt = pg_insert(Reading).values(payload)
         stmt = stmt.on_conflict_do_update(
             index_elements=["entity_id", "metric", "ts"],
             set_={"value": stmt.excluded.value, "baseline": stmt.excluded.baseline,
@@ -285,6 +361,9 @@ async def import_csv(
         db.execute(stmt)
         db.commit()
         out["commit"] = True
-        out["inserted"] = len(parsed)
+        # inserted vs updated matters: a re-import should report 0 inserted,
+        # not claim it added everything again.
+        out["inserted"] = len(payload) - int(existing)
+        out["upserted"] = int(existing)
 
     return out
