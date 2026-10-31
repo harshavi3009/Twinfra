@@ -138,11 +138,52 @@ def _row_to_ticket(row) -> TicketOut:
         sla_seconds_left=seconds_left,
         escalated=bool(escalated),
         verification=verification,
-        evidence=evidence,
+        evidence=_evidence_with_explanation(evidence),
         completed_at=completed_at,
         completion_photo=completion_photo,
         completion_note=completion_note,
     )
+
+
+def _evidence_with_explanation(evidence: dict | None) -> dict | None:
+    """Ensure evidence carries a human `explanation` for the ticket drawer.
+
+    TicketDrawer renders `ticket.evidence.explanation` as the Evidence block.
+    Aditya's detector writes structured fields (kind/metric/actual/expected/
+    ratio) but no prose, so the block silently disappeared on auto-tickets -
+    the one place the demo shows *why* a ticket exists. Rather than change his
+    writer or the component, synthesise the sentence here.
+    """
+    if not evidence or evidence.get("explanation"):
+        return evidence
+
+    kind = evidence.get("kind") or "anomaly"
+    metric = evidence.get("metric") or "power"
+    actual = evidence.get("actual")
+    expected = evidence.get("expected")
+    ratio = evidence.get("ratio")
+
+    label = metric.replace("_kw", "").replace("_lpm", "").replace("_", " ")
+    opening = {
+        "spike": f"{label} spiked",
+        "ghost_load": f"{label} drawn while the space was empty",
+        "night_leak": f"{label} flowing at night",
+        "drift": f"{label} drifting above baseline",
+        "failure_risk": "Predicted to fail soon",
+    }.get(kind, f"{label} anomaly")
+
+    parts: list[str] = [opening]
+    try:
+        if actual is not None and expected is not None:
+            parts.append(f"{float(actual):.2f} vs {float(expected):.2f} expected")
+        if ratio is not None:
+            parts.append(f"{float(ratio):.2f}x baseline")
+    except (TypeError, ValueError):
+        pass
+
+    out = dict(evidence)
+    out["explanation"] = " - ".join(parts) + "."
+    return out
 
 
 def _fetch(db: Session, ticket_id: str) -> TicketOut:
