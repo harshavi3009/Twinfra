@@ -10,12 +10,16 @@
 import { useCallback, useEffect, useRef, useState } from 'react'
 import { HandTracker } from './handTracker.js'
 import { GestureController } from './GestureController.js'
+import { classify, fingerScores } from './classify.js'
 
 export function useHandGestures({ enabled = false, videoRef, onCommand } = {}) {
   const [gesture, setGesture] = useState('none')
   const [error, setError] = useState('')
   const [ready, setReady] = useState(false)
   const [debug, setDebug] = useState(false)
+  /** Fingertip position while pointing, in 0..1 screen space, or null. */
+  const [cursorPos, setCursorPos] = useState(null)
+  const cursorRef = useRef(null)
 
   // `__gestureDebug(true)` in the console turns the diagnostics panel on.
   useEffect(() => {
@@ -37,7 +41,14 @@ export function useHandGestures({ enabled = false, videoRef, onCommand } = {}) {
   }, [onCommand])
 
   const send = useCallback((name, arg) => {
-    if (name === 'cursor') return // nothing to draw yet
+    // `cursor` is the fingertip position while pointing. It is not a camera
+    // command, so it goes out on its own channel and the HUD draws a reticle
+    // from it -- otherwise the point gesture is invisible and looks broken.
+    if (name === 'cursor') {
+      cursorRef.current = arg
+      setCursorPos(arg)
+      return
+    }
     commandRef.current = { name, arg, at: performance.now() }
     onCommandRef.current?.(name, arg)
   }, [])
@@ -67,9 +78,28 @@ export function useHandGestures({ enabled = false, videoRef, onCommand } = {}) {
       }
     })
 
+    // `__gestureCapture()` freezes the next frame's raw landmarks so they can be
+    // pasted into a bug report. Landmark dumps are the only way to tell whether
+    // a gesture is failing in the classifier or before it.
+    let captureNext = false
+    globalThis.__gestureCapture = () => {
+      captureNext = true
+      return 'capturing -- hold your hand up now'
+    }
+
     const tracker = new HandTracker({
       video,
       onHands: (hands) => {
+        if (captureNext && hands.length) {
+          captureNext = false
+          globalThis.__gestureCaptureResult = {
+            hands: hands.length,
+            landmarks: hands.map((h) => h.map(([x, y]) => [+x.toFixed(3), +y.toFixed(3)])),
+            scores: hands.map((h) => fingerScores(h).map((v) => +v.toFixed(3))),
+            classified: hands.map((h) => classify(h)),
+          }
+          console.log('[gestures] captured:', globalThis.__gestureCaptureResult)
+        }
         const g = controllerRef.current?.update(hands)
         // Type __gestureDebug(true) in the browser console to see what MediaPipe
         // reports and which gesture the classifier chose -- the fastest way to
@@ -102,5 +132,5 @@ export function useHandGestures({ enabled = false, videoRef, onCommand } = {}) {
     }
   }, [enabled, videoRef, send])
 
-  return { gesture, error, ready, commandRef, controllerRef, debug, setDebug }
+  return { gesture, error, ready, commandRef, controllerRef, debug, setDebug, cursorPos }
 }

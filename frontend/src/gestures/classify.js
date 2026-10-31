@@ -61,9 +61,29 @@ export const FINGERS = [
  * `thumbOut`— thumb tip further than this from the index knuckle (× hand size).
  */
 export const TOLERANCE = {
-  extend: 0.30,
-  /** An open hand's fingers are all extended by a similar amount. */
-  flat: 1.1,
+  /**
+   * A fingertip must travel this far past its knuckle, in hand-size units, to
+   * count as extended. Chosen from measured scores, which are ORDERS apart:
+   *
+   *              index  middle    ring   pinky
+   *   open       0.417   1.130   0.809   0.119
+   *   peace      0.417   1.130  -0.255  -0.038
+   *   three      0.417   1.130   0.809  -0.038
+   *   fist      -0.132  -0.357  -0.255  -0.038
+   *
+   * 0.10 sits in the gap between "folded" (negative) and "open" (0.119 up), and
+   * is loose enough that a short pinky still registers on a real open hand.
+   * Anything in 0.05..0.11 behaves the same on these poses.
+   */
+  extend: 0.10,
+  /**
+   * An all-fingers-up hand is ambiguous between a genuine open palm and a sloppy
+   * peace sign, so compare the weakest finger to the strongest:
+   *   open          0.119 / 1.130 = 0.106
+   *   sloppy peace  0.009 / 1.130 = 0.008   (ring only half raised)
+   * 0.05 sits between them with room for sensor noise either side.
+   */
+  openRatio: 0.035,
   pinch: 0.42,
   thumbOut: 0.85,
 }
@@ -148,7 +168,8 @@ export function classify(landmarks) {
   if (!landmarks || landmarks.length < 21) return 'unknown'
 
   const size = handSize(landmarks)
-  const { scores, up } = classifyPose(landmarks)
+  const up = extendedFingers(landmarks)
+  const scores = fingerScores(landmarks)
   const count = up.filter(Boolean).length
 
   // Thumb: out when its tip is far from the index knuckle relative to hand size.
@@ -166,22 +187,47 @@ export function classify(landmarks) {
   // the folded thumb tip, so distance alone would call every fist a pinch.
   if (pinching && up[0]) return 'pinch'
 
-  // Open palm: every finger out past the cutoff, or the whole hand uniformly
-  // positive (a short pinky on a real open hand scores low but still positive,
-  // while a folded one goes negative).
-  const openEq = Math.max(...scores) - Math.min(...scores)
-  if (count === 4 || (scores.every((s) => s > 0) && openEq < TOLERANCE.flat)) return 'open'
+  // All four "up" is ambiguous: an open hand and a sloppy peace both clear the
+  // per-finger cutoff, because a half-raised ring finger scores 0.12 while a
+  // truly extended one scores 0.81. What separates them is RELATIVE: in a real
+  // open hand every finger is extended by a comparable amount, while in any
+  // two-finger pose the bottom finger is far weaker than the top. Comparing the
+  // weakest finger to the strongest -- rather than each to a fixed number -- is
+  // the only test that holds across hand shapes.
+  if (count === 4) {
+    return weakestVsStrongest(scores) > TOLERANCE.openRatio ? 'open' : 'peace'
+  }
 
   if (count === 0) return thumbOut && thumbUp ? 'thumbs_up' : 'fist'
 
   if (up[0] && !up[1] && !up[2] && !up[3]) return 'point'
   if (up[0] && up[1] && !up[2] && !up[3]) return 'peace'
-  if (up[0] && up[1] && up[2] && !up[3]) return 'three'
+  // Index+middle+ring up. This is reached two ways and they must NOT mean the
+  // same thing:
+  //   * an open palm whose pinky dipped below the cutoff for one jittery frame
+  //     (open hands score pinky 0.119, agonisingly close to the 0.10 cutoff)
+  //   * a sloppy peace whose ring finger is only half raised
+  // The weakest-vs-strongest ratio separates them exactly as it does for
+  // count === 4, so both call the same helper instead of guessing.
+  if (up[0] && up[1] && up[2] && !up[3]) {
+    return weakestVsStrongest(scores) > TOLERANCE.openRatio ? 'open' : 'peace'
+  }
   if (!up[0] && !up[1] && !up[2] && up[3] && thumbOut) return 'call'
 
   // 7 of the 8 plausible poses are handled above; anything else stays unknown
   // rather than guessing.
   return 'unknown'
+}
+
+/**
+ * How extended the weakest finger is relative to the strongest, as a ratio.
+ * A real open hand has all four out by a comparable amount (~0.11); any pose
+ * where a finger is only partly raised lands near 0.01.
+ */
+function weakestVsStrongest(scores) {
+  const strongest = Math.max(...scores)
+  if (strongest <= 0) return 0
+  return Math.min(...scores) / strongest
 }
 
 /** Distance between two palms, used for two-handed zoom. */

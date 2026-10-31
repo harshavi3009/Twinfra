@@ -83,6 +83,7 @@ export default function Overview() {
     controllerRef: gestureControllerRef,
     debug: gestureDebug,
     setDebug: setGestureDebug,
+    cursorPos: gestureCursor,
   } = useHandGestures({ enabled: handControl, videoRef, onCommand: () => {} })
 
   // G turns hand control on/off, so the presenter does not have to find a button
@@ -178,6 +179,7 @@ export default function Overview() {
               controllerRef={gestureControllerRef}
               debug={gestureDebug}
               onDebugToggle={setGestureDebug}
+              cursorPos={gestureCursor}
             />
           )}
         </div>

@@ -51,9 +51,9 @@ export function GestureToggleButton({ enabled, onToggle }) {
   )
 }
 
-export function GestureHud({ gesture, error, ready, videoRef, controllerRef, debug, onDebugToggle }) {
+export function GestureHud({ gesture, error, ready, videoRef, controllerRef, debug, onDebugToggle, cursorPos }) {
   return (
-    <div className="pointer-events-none absolute bottom-3 left-3 z-10 w-52 overflow-hidden rounded-md border border-white/15 bg-black/75 backdrop-blur">
+    <div className="pointer-events-auto absolute bottom-3 left-3 z-10 w-52 overflow-hidden rounded-md border border-white/15 bg-black/75 backdrop-blur">
       <video
         ref={videoRef}
         className="h-36 w-full scale-x-[-1] object-cover"
@@ -80,6 +80,28 @@ export function GestureHud({ gesture, error, ready, videoRef, controllerRef, deb
         diagnostics
       </label>
       {debug && <DebugRows controllerRef={controllerRef} />}
+      <FingerReticle pos={cursorPos} />
+    </div>
+  )
+}
+
+/**
+ * A dot under the fingertip while pointing. Without it the point gesture is
+ * completely invisible -- it emits no camera command, so the screen gives no
+ * feedback at all and it reads as broken.
+ */
+function FingerReticle({ pos }) {
+  if (!pos) return null
+  return (
+    <div
+      className="pointer-events-none fixed z-40"
+      style={{
+        left: `${pos[0] * 100}%`,
+        top: `${pos[1] * 100}%`,
+        transform: 'translate(-50%, -50%)',
+      }}
+    >
+      <div className="h-4 w-4 rounded-full border-2 border-emerald-400/90 bg-emerald-400/30" />
     </div>
   )
 }

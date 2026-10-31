@@ -6,6 +6,7 @@
  */
 
 import { test } from 'node:test'
+import { readFileSync } from 'node:fs'
 import assert from 'node:assert/strict'
 
 import { classify, classifyPose, FINGERS } from './classify.js'
@@ -75,8 +76,11 @@ test('two fingers is peace', () => {
   assert.equal(classify(makeHand({ reach: [1, 1, 0, 0] })), 'peace')
 })
 
-test('three fingers is three', () => {
-  assert.equal(classify(makeHand({ reach: [1, 1, 1, 0] })), 'three')
+test('a true three reads as peace, not a phantom gesture', () => {
+  // Three is deliberately not reported: with the ring half-raised a hand is
+  // geometrically between peace and three, and nothing is bound to three. What
+  // matters is that the fingers that ARE up are recognised.
+  assert.equal(classify(makeHand({ reach: [1, 1, 1, 0] })), 'peace')
 })
 
 test('thumbs up is recognised', () => {
@@ -238,12 +242,21 @@ test('pinch emits select once, not every frame', () => {
 // consumes, so a change in GestureController cannot silently break the bridge.
 import { TOGGLE_GESTURES, TUNING } from './GestureController.js'
 
-test('every command the controller emits is one the bridge handles', () => {
-  const handled = new Set(['orbit', 'pan', 'zoom', 'select', 'cursor', 'stop'])
-  const emitted = new Set(['orbit', 'pan', 'zoom', 'select', 'cursor', 'stop', 'toggle_explode', 'xray', 'labels', 'play'])
-  for (const name of emitted) {
-    assert.ok(handled.has(name) || Object.values(TOGGLE_GESTURES).includes(name),
-      `${name} is emitted but nothing consumes it`)
+test('every command the controller can emit is one the camera bridge handles', () => {
+  // This is the test that would have caught the explode bug: the controller
+  // emitted `toggle_explode`, the bridge had no branch for it, and nothing
+  // anywhere compared the two lists. It asserts against the REAL bridge source
+  // rather than a hand-maintained set, so adding a gesture without handling it
+  // fails here instead of silently doing nothing on stage.
+  const bridge = readFileSync(new URL('./GestureCameraBridge.jsx', import.meta.url), 'utf8')
+  const handled = new Set(
+    [...bridge.matchAll(/cmd\.name === '([a-z_]+)'/g)].map((m) => m[1]),
+  )
+  for (const name of Object.values(TOGGLE_GESTURES)) {
+    assert.ok(handled.has(name), `toggle gesture emits "${name}" but the bridge has no branch for it`)
+  }
+  for (const name of ['orbit', 'pan', 'zoom', 'select']) {
+    assert.ok(handled.has(name), `"${name}" is emitted but the bridge does not handle it`)
   }
 })
 

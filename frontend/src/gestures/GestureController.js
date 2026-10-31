@@ -12,12 +12,21 @@
  *   - the hand leaving the frame must not cause a jump when it returns -> reset
  */
 
-import { classify, palmCenter, twoHandDistance, mirror, fingerScores } from './classify.js'
+import {
+  classify,
+  palmCenter,
+  twoHandDistance,
+  mirror,
+  fingerScores,
+  extendedFingers,
+} from './classify.js'
 
 // ---- tuning (all in one place so it can be explained and adjusted) ----
 export const TUNING = {
   /** Frames a gesture must persist before it counts. At 15 fps, 3 ≈ 200 ms. */
   stableFrames: 3,
+  /** Frames of landmarks to average before classifying; damps sensor jitter. */
+  smoothFrames: 12,
   /** Seconds a toggle gesture must be held before it fires. */
   holdSeconds: 0.8,
   /** Seconds after a toggle before it can fire again. */
@@ -35,11 +44,26 @@ export const TUNING = {
 }
 
 /** Gestures that fire once when held, rather than continuously. */
+/**
+ * Hold-to-fire gestures. Every value here MUST have a matching branch in
+ * GestureCameraBridge — `gestures.test.js` reads the bridge source and fails if
+ * one does not. `toggle_explode` was once emitted with no branch at all, which
+ * is why the peace gesture appeared to do nothing.
+ *
+ * thumbs_up/xray and call/labels were removed for the same reason: nothing
+ * consumed them, so they were gestures that silently did nothing.
+ */
 export const TOGGLE_GESTURES = {
   peace: 'toggle_explode',
-  thumbs_up: 'xray',
-  call: 'labels',
-  three: 'play',
+}
+
+/** Element-wise mean of several hands with the same landmark layout. */
+function averageFrames(frames) {
+  const n = frames.length
+  return frames[0].map((_, k) => [
+    frames.reduce((sum, f) => sum + f[k][0], 0) / n,
+    frames.reduce((sum, f) => sum + f[k][1], 0) / n,
+  ])
 }
 
 export class GestureController {
@@ -55,6 +79,10 @@ export class GestureController {
     /** Debug only: what the classifier said this frame, and the finger ratios. */
     this.lastRaw = '-'
     this.lastRatios = null
+    /** Rolling window of recent landmarks, averaged before classification. */
+    this.frameBuf = []
+    /** Previous per-finger up/down state, for threshold hysteresis. */
+    this.lastUp = null
     this.now = now
     this.tuning = { ...TUNING, ...tuning }
 
@@ -119,8 +147,21 @@ export class GestureController {
     this.prevTwo = null
 
     // ---- one hand ----
-    const lm = mirrored[0]
-    const raw = classify(lm)
+    // Average the last few frames' landmark positions before classifying.
+    //
+    // MediaPipe jitters a couple of percent frame to frame, which is enough to
+    // flip a finger sitting near the extension threshold. Classifying single
+    // frames made a held `point` flicker to `fist` every ~6th frame, and because
+    // the stabiliser wants consecutive agreement it then never latched at all --
+    // so the cursor simply never appeared. Averaging coordinates is cheaper and
+    // more faithful than averaging the derived scores, since the geometry stays
+    // consistent (a mean of two valid hands is still a valid hand).
+    this.frameBuf.push(mirrored[0])
+    if (this.frameBuf.length > this.tuning.smoothFrames) this.frameBuf.shift()
+    const lm = this.frameBuf.length > 1 ? averageFrames(this.frameBuf) : mirrored[0]
+
+    const raw = classify(lm, this.lastUp)
+    this.lastUp = extendedFingers(lm, this.lastUp)
     this.lastRaw = raw
     this.lastRatios = fingerScores(lm)
     // Coming back from two-hand zoom, the last gesture was "zoom"; seed the
