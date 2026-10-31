@@ -9,6 +9,7 @@ import Effects from './Effects'
 import CameraRig from './CameraRig'
 import DayNight from './DayNight'
 import { useSelection } from './useSelection'
+import GestureCameraBridge from '../gestures/GestureCameraBridge.jsx'
 
 const EMPTY = []
 const DOUBLE_CLICK_MS = 350
@@ -61,6 +62,10 @@ export function Campus3D({
   highlightIds = EMPTY,
   whatIf = null,
   timeOfDay = 'day',
+  // Hand control (optional). Both default to null, so with no webcam nothing
+  // in this component changes for mouse users.
+  gestureCommand = null,
+  onGesturePick = null,
 }) {
   const buildings = campus?.buildings ?? EMPTY
   const utilities = campus?.utilities ?? EMPTY
@@ -139,6 +144,9 @@ export function Campus3D({
           selection={selection}
           overviewTarget={overviewTarget}
         />
+        {gestureCommand && (
+          <GestureCameraBridge commandRef={gestureCommand} onPick={onGesturePick} />
+        )}
         <Effects />
       </Canvas>
 

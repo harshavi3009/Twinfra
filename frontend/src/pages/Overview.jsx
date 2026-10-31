@@ -1,4 +1,4 @@
-import { useEffect, useState } from 'react'
+import { useEffect, useRef, useState } from 'react'
 import { useLocation } from 'react-router-dom'
 import { getAlerts, getBuilding, getCampus, getEquipment, getImpact, getRoom } from '../api/client.js'
 import CreateTicketModal from '../components/CreateTicketModal.jsx'
@@ -7,6 +7,8 @@ import EntityCharts from '../components/EntityCharts.jsx'
 import KpiStrip from '../components/KpiStrip.jsx'
 import { usePolling } from '../hooks/usePolling.js'
 import { Campus3D } from '../campus3d/index.jsx'
+import GestureOverlay from '../gestures/GestureOverlay.jsx'
+import { useHandGestures } from '../gestures/useHandGestures.js'
 
 const EMPTY = { buildingId: null, floorId: null, roomId: null, equipmentId: null }
 
@@ -32,6 +34,11 @@ export default function Overview() {
   // Campus3D ignores a detail whose id doesn't match the selection, so stale values are harmless.
   const [buildingDetail, setBuildingDetail] = useState(null)
   const [roomDetail, setRoomDetail] = useState(null)
+
+  // Hand control is OFF until the presenter turns it on: the demo must never
+  // depend on a webcam working.
+  const [handControl, setHandControl] = useState(false)
+  const videoRef = useRef(null)
   useEffect(() => {
     if (!selection.buildingId) return
     let cancelled = false
@@ -54,6 +61,7 @@ export default function Overview() {
 
   // Alert entity ids look like B1 / B1-F1-R01 / EQ-0042. Select as deep as the id tells us.
   const selectEntity = (id) => {
+    if (!id || typeof id !== 'string') return
     if (id.startsWith('EQ-')) {
       getEquipment(id)
         .then((eq) => select({ buildingId: eq.building_id, floorId: null, roomId: eq.room_id, equipmentId: eq.id }))
@@ -62,6 +70,22 @@ export default function Overview() {
     }
     const [b, f, r] = id.split('-')
     select({ buildingId: b, floorId: f ? `${b}-${f}` : null, roomId: r ? id : null, equipmentId: null })
+  }
+
+  // Hand control. The hook owns the webcam and the gesture logic; the camera
+  // reads commands from `gestureCommandRef`, and a pinch reports the entity it
+  // hit so the side panel follows.
+  const {
+    gesture,
+    error: gestureError,
+    ready: gestureReady,
+    commandRef: gestureCommandRef,
+  } = useHandGestures({ enabled: handControl, videoRef, onCommand: () => {} })
+
+  const handleGesturePick = (picked) => {
+    // `picked` is an entity id once Rishi tags building groups with
+    // userData.entityId; until then it is {position} and we ignore it.
+    if (typeof picked === 'string') selectEntity(picked)
   }
 
   // The Alerts page links here with the entity to show.
@@ -109,7 +133,7 @@ export default function Overview() {
       </div>
 
       <div className="flex h-[520px] gap-4">
-        <div className="min-w-0 flex-1">
+        <div className="relative min-w-0 flex-1">
           <Campus3D
             campus={campus}
             selection={selection}
@@ -117,6 +141,16 @@ export default function Overview() {
             buildingDetail={buildingDetail}
             roomDetail={roomDetail}
             highlightIds={impact?.affected?.ids ?? []}
+            gestureCommand={handControl ? gestureCommandRef : null}
+            onGesturePick={handleGesturePick}
+          />
+          <GestureOverlay
+            enabled={handControl}
+            onToggle={() => setHandControl((v) => !v)}
+            gesture={gesture}
+            error={gestureError}
+            ready={gestureReady}
+            videoRef={videoRef}
           />
         </div>
         <aside className="w-96 shrink-0 overflow-auto">
