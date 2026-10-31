@@ -20,8 +20,13 @@ from .common import now_utc
 # An alert at or above this severity raises a ticket.
 AUTO_TICKET_SEVERITIES = {"critical", "high"}
 
-# SLA hours by severity: how long the fix is allowed to take.
-SLA_HOURS = {"critical": 4, "high": 24, "medium": 72, "low": 168}
+# SLA hours by priority. Taken from app/constants.py when Ayaan's A3 has landed
+# (contract/db.md: 4/12/48/72) so the two can never drift apart again; the
+# literal below is the same table, used only when that module is unavailable.
+try:
+    from ..constants import SLA_HOURS                       # noqa: F401
+except Exception:                                            # pragma: no cover
+    SLA_HOURS = {"critical": 4, "high": 12, "medium": 48, "low": 72}
 
 # Use whatever skills match the fault. First match wins, in this order.
 SKILL_BY_KIND = {
@@ -187,6 +192,9 @@ def raise_tickets_for(db, alerts: list[dict]) -> list[dict]:
             description=description,
             priority=alert["severity"],
             evidence={
+                # TicketDrawer renders evidence.explanation, so the sentence the
+                # detector already wrote is the one that reaches the technician.
+                "explanation": alert["explanation"],
                 "metric": alert["metric"],
                 "kind": alert["kind"],
                 "actual": alert["actual"],

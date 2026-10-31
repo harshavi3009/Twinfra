@@ -68,7 +68,15 @@ def clear_fault(entity_id: str, db: Session | None = None) -> None:
 
 
 class WhatIfRequest(BaseModel):
-    action: str = Field(..., description="led_retrofit | schedule_ac | fix_ghost_load | solar_roof")
+    """Accepts both shapes so the frontend and curl examples both work:
+
+        {"action": "led_retrofit"}              single
+        {"actions": ["led_retrofit", "schedule_ac"]}   several at once
+    """
+
+    action: str | None = Field(
+        None, description="led_retrofit | schedule_ac | fix_ghost_load | solar_roof")
+    actions: list[str] | None = Field(None, description="one or more of the above")
     entity_id: str | None = None
 
 
@@ -92,9 +100,17 @@ def interventions(db: Session = Depends(get_db)) -> list[dict]:
 
 @router.post("/whatif")
 def whatif(body: WhatIfRequest, db: Session = Depends(get_db)) -> dict:
-    """'What if we did X?' - baseline vs projected, per building."""
+    """'What if we did X?' - baseline vs projected, per building.
+
+    Two actions can be combined (LED retrofit + AC scheduling); the reductions
+    are compounded, not added, so the result is never negative.
+    """
+    picked = body.actions or ([body.action] if body.action else [])
+    if not picked:
+        raise HTTPException(
+            status_code=400, detail="send 'action' or 'actions'")
     try:
-        return reporting.whatif(db, body.action, body.entity_id)
+        return reporting.whatif(db, picked, body.entity_id)
     except ValueError as exc:
         raise HTTPException(status_code=400, detail=str(exc)) from exc
 
