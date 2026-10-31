@@ -204,3 +204,86 @@ def cached(namespace: str, ttl: float = DEFAULT_TTL):
         return wrapper
 
     return decorate
+
+
+# --------------------------------------------------------------------------- #
+# ASGI middleware
+# --------------------------------------------------------------------------- #
+# Endpoints that are expensive, read-only, and safe to serve slightly stale.
+# Kept as an explicit allowlist rather than "everything GET": /uploads/ serves
+# technician photos and /api/health must never be cached, and an allowlist
+# makes the blast radius obvious to whoever reads this next.
+CACHEABLE_PATHS: tuple[str, ...] = (
+    "/api/campus",
+    "/api/buildings/",
+    "/api/rooms/",
+    "/api/equipment/",
+    "/api/readings",
+    "/api/connections",
+    "/api/tickets",
+    "/api/technicians",
+    "/api/insights/alerts",
+    "/api/insights/interventions",
+    "/api/insights/reports/",
+)
+
+
+class CacheMiddleware:
+    """Response-level cache so endpoints stay fast without touching their code.
+
+    The four core read routes cache internally via ``@cached``, but that was
+    only half the demo surface. Aditya's insights/reports routes take 14-27 s
+    cold against the Supabase pooler and the frontend calls them directly, so
+    the Reports and Insights screens would sit blank on stage.
+
+    ``insights/`` is his code, so rather than edit it this wraps it: any GET
+    under ``CACHEABLE_PATHS`` is stored by full path+query for ``ttl`` seconds.
+    ``invalidate()`` is shared with the endpoint-level cache, so the writes that
+    already clear it (tickets, readings, insights/run) clear this too.
+    """
+
+    def __init__(self, app, ttl: float = 30.0) -> None:
+        self.app = app
+        self.ttl = ttl
+
+    async def __call__(self, scope, receive, send):
+        if scope["type"] != "http" or scope["method"] != "GET":
+            return await self.app(scope, receive, send)
+
+        path = scope["path"]
+        if not path.startswith(CACHEABLE_PATHS):
+            return await self.app(scope, receive, send)
+
+        key = ("mw", path, scope.get("query_string", b"").decode())
+
+        with _lock:
+            hit = _store.get(key)
+            if hit is not None and hit[0] > time.monotonic():
+                return await _send_cached(send, hit[1])
+
+        # Capture the response as it streams past, then store it.
+        captured = {"status": None, "headers": None, "body": bytearray()}
+
+        async def send_wrapper(message):
+            if message["type"] == "http.response.start":
+                captured["status"] = message["status"]
+                captured["headers"] = message["headers"]
+            elif message["type"] == "http.response.body":
+                captured["body"].extend(message.get("body", b""))
+            await send(message)
+
+        await self.app(scope, receive, send_wrapper)
+
+        # Only cache clean, complete successes - never a 500.
+        if captured["status"] == 200:
+            with _lock:
+                _store[key] = (
+                    time.monotonic() + self.ttl,
+                    (captured["status"], captured["headers"], bytes(captured["body"])),
+                )
+
+
+async def _send_cached(send, payload) -> None:
+    status, headers, body = payload
+    await send({"type": "http.response.start", "status": status, "headers": headers})
+    await send({"type": "http.response.body", "body": body})
