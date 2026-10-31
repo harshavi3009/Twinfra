@@ -37,3 +37,25 @@ body {
 .live-dot {
   animation: live-pulse 1.6s ease-in-out infinite;
 }
+
+/* Print: a clean report page. Sidebar, toolbars and toasts stay on screen only. */
+@media print {
+  @page { margin: 12mm; }
+  html, body, #root { height: auto; overflow: visible; }
+  body { background: #fff; color: #000; }
+  aside, header, .no-print, .fixed { display: none !important; }
+  main { overflow: visible !important; padding: 0 !important; }
+  .report-section, .report-section * { break-inside: avoid; }
+  .report-section, .report-section > div, .report-section .bg-panel, .report-section .border-line {
+    background: #fff !important; border-color: #ccc !important; color: #000 !important;
+  }
+}
+
+@keyframes verify-pop {
+  0% { transform: scale(0.85); opacity: 0; }
+  60% { transform: scale(1.06); opacity: 1; }
+  100% { transform: scale(1); }
+}
+.verify-pop {
+  animation: verify-pop 0.45s ease-out;
+}
