@@ -7,7 +7,7 @@ import EntityCharts from '../components/EntityCharts.jsx'
 import KpiStrip from '../components/KpiStrip.jsx'
 import { usePolling } from '../hooks/usePolling.js'
 import { Campus3D } from '../campus3d/index.jsx'
-import GestureOverlay from '../gestures/GestureOverlay.jsx'
+import { GestureHud, GestureToggleButton } from '../gestures/GestureOverlay.jsx'
 import { useHandGestures } from '../gestures/useHandGestures.js'
 
 const EMPTY = { buildingId: null, floorId: null, roomId: null, equipmentId: null }
@@ -82,6 +82,19 @@ export default function Overview() {
     commandRef: gestureCommandRef,
   } = useHandGestures({ enabled: handControl, videoRef, onCommand: () => {} })
 
+  // G turns hand control on/off, so the presenter does not have to find a button
+  // on a projector. Ignored while typing in an input.
+  useEffect(() => {
+    const onKey = (e) => {
+      if (e.key.toLowerCase() !== 'g' || e.metaKey || e.ctrlKey || e.altKey) return
+      const el = document.activeElement
+      if (el && ['INPUT', 'TEXTAREA', 'SELECT'].includes(el.tagName)) return
+      setHandControl((v) => !v)
+    }
+    window.addEventListener('keydown', onKey)
+    return () => window.removeEventListener('keydown', onKey)
+  }, [])
+
   const handleGesturePick = (picked) => {
     // `picked` is an entity id once Rishi tags building groups with
     // userData.entityId; until then it is {position} and we ignore it.
@@ -118,7 +131,8 @@ export default function Overview() {
           )}
           {impactError && <span className="text-critical">{impactError}</span>}
         </div>
-        <div className="flex gap-2">
+        <div className="flex items-center gap-2">
+          <GestureToggleButton enabled={handControl} onToggle={() => setHandControl((v) => !v)} />
           {impact && (
             <button type="button" onClick={() => setImpact(null)} className="rounded border border-line px-3 py-1 text-muted hover:text-text">
               Clear
@@ -144,14 +158,14 @@ export default function Overview() {
             gestureCommand={handControl ? gestureCommandRef : null}
             onGesturePick={handleGesturePick}
           />
-          <GestureOverlay
-            enabled={handControl}
-            onToggle={() => setHandControl((v) => !v)}
-            gesture={gesture}
-            error={gestureError}
-            ready={gestureReady}
-            videoRef={videoRef}
-          />
+          {handControl && (
+            <GestureHud
+              gesture={gesture}
+              error={gestureError}
+              ready={gestureReady}
+              videoRef={videoRef}
+            />
+          )}
         </div>
         <aside className="w-96 shrink-0 overflow-auto">
           <DrillDownPanel

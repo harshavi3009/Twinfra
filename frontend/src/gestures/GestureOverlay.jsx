@@ -1,8 +1,13 @@
 /**
- * Small on-screen panel: webcam preview, current gesture, and the toggle.
+ * The hand-control toggle and HUD.
  *
- * Deliberately shows the preview -- presenters need to see whether their hand
- * is actually in frame before they start waving at a projector.
+ * Two separate pieces on purpose:
+ *   - <GestureToggleButton />  always visible, so you can turn hand control on
+ *   - <GestureHud />           only mounts while hand control is on, so the
+ *                              <video> element does not exist until it is needed
+ *
+ * The HUD keeps the webcam preview because presenters need to see whether their
+ * hand is actually in frame before they start waving at a projector.
  */
 
 import { GESTURE_LABEL } from './classify.js'
@@ -21,37 +26,59 @@ const DOT = {
   unknown: 'bg-slate-600',
 }
 
-export default function GestureOverlay({ enabled, onToggle, gesture, error, ready, videoRef }) {
-  return (
-    <div className="pointer-events-none absolute bottom-3 left-3 z-10 flex flex-col gap-2">
-      <button
-        type="button"
-        onClick={onToggle}
-        className="pointer-events-auto self-start rounded-md border border-white/15 bg-black/60 px-2.5 py-1 text-xs font-medium text-slate-200 backdrop-blur hover:bg-black/80"
-      >
-        {enabled ? 'Hand control: on' : 'Hand control: off'}
-      </button>
+const HAND = '\u270B' // ✋
 
-      {enabled && (
-        <div className="w-52 overflow-hidden rounded-md border border-white/15 bg-black/70 backdrop-blur">
-          <video
-            ref={videoRef}
-            className="h-36 w-full scale-x-[-1] object-cover"
-            playsInline
-            muted
-          />
-          <div className="flex items-center gap-2 px-2 py-1.5 text-xs text-slate-200">
-            <span className={`h-2 w-2 shrink-0 rounded-full ${DOT[gesture] || DOT.none}`} />
-            <span className="truncate">
-              {error ? 'Camera unavailable' : GESTURE_LABEL[gesture] || GESTURE_LABEL.unknown}
-            </span>
-            {enabled && ready && !error && (
-              <span className="ml-auto shrink-0 text-[10px] text-emerald-400">live</span>
-            )}
-          </div>
-          {error && <p className="px-2 pb-2 text-[10px] leading-snug text-amber-400">{error}</p>}
-        </div>
-      )}
+export function GestureToggleButton({ enabled, onToggle }) {
+  return (
+    <button
+      type="button"
+      onClick={onToggle}
+      title={enabled ? 'Turn hand control off (G)' : 'Turn hand control on (G)'}
+      aria-pressed={enabled}
+      className={`flex items-center gap-1.5 rounded-md border px-2.5 py-1.5 text-xs font-medium backdrop-blur transition ${
+        enabled
+          ? 'border-emerald-400/60 bg-emerald-500/20 text-emerald-200 hover:bg-emerald-500/30'
+          : 'border-white/15 bg-black/60 text-slate-300 hover:bg-black/80'
+      }`}
+    >
+      <span aria-hidden="true">{HAND}</span>
+      <span>Hand control</span>
+      <span
+        className={`h-1.5 w-1.5 rounded-full ${enabled ? 'bg-emerald-400' : 'bg-slate-500'}`}
+      />
+    </button>
+  )
+}
+
+export function GestureHud({ gesture, error, ready, videoRef }) {
+  return (
+    <div className="pointer-events-none absolute bottom-3 left-3 z-10 w-52 overflow-hidden rounded-md border border-white/15 bg-black/75 backdrop-blur">
+      <video
+        ref={videoRef}
+        className="h-36 w-full scale-x-[-1] object-cover"
+        playsInline
+        muted
+      />
+      <div className="flex items-center gap-2 px-2 py-1.5 text-xs text-slate-200">
+        <span className={`h-2 w-2 shrink-0 rounded-full ${DOT[gesture] || DOT.none}`} />
+        <span className="truncate">
+          {error ? 'Camera unavailable' : GESTURE_LABEL[gesture] || GESTURE_LABEL.unknown}
+        </span>
+        {ready && !error && (
+          <span className="ml-auto shrink-0 text-[10px] text-emerald-400">live</span>
+        )}
+      </div>
+      {error && <p className="px-2 pb-2 text-[10px] leading-snug text-amber-400">{error}</p>}
     </div>
+  )
+}
+
+/** Kept for callers that want the old single component. */
+export default function GestureOverlay(props) {
+  return (
+    <>
+      <GestureToggleButton enabled={props.enabled} onToggle={props.onToggle} />
+      {props.enabled && <GestureHud {...props} />}
+    </>
   )
 }
