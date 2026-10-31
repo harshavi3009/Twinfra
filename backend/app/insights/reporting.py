@@ -16,6 +16,7 @@ from datetime import datetime, timedelta
 import pandas as pd
 from sqlalchemy import text
 
+from ..cache import invalidate
 from . import common, detect, predict, tickets as ticket_mod, verify  # noqa: I001
 from . import common
 C = common.C
