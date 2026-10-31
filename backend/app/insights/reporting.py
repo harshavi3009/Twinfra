@@ -211,6 +211,31 @@ def get_interventions(db) -> list[dict]:
         })
 
     out.sort(key=lambda i: i["saving_inr_month"], reverse=True)
+
+    # Contract-shaped aliases (frontend/src/api/client.js reads these), plus a
+    # rank so the UI does not have to count. `capex_inr`/`saving_inr_month`
+    # stay so nothing that already reads them breaks.
+    risk_of = {"critical": "high", "high": "high", "medium": "medium", "low": "low"}
+    for n, item in enumerate(out, start=1):
+        capex = float(item["capex_inr"] or 0)
+        save = float(item["saving_inr_month"] or 0)
+        item["rank"] = n
+        item["risk"] = risk_of.get(item["severity"], "low")
+        item["cost_inr"] = item["capex_inr"]
+        item["savings_inr_month"] = item["saving_inr_month"]
+        item["why"] = item["reason"]
+        # rough effort: a leak/timer is <1 h, a swap or a retrofit is a shift
+        item["downtime_hours"] = {
+            "ghost_load": 1, "night_leak": 2, "spike": 4, "drift": 6,
+            "retrofit": 16,
+        }.get(item["kind"], 4)
+        # 0..1 usefulness: big saving and quick payback score high
+        payback = (capex / save) if save > 0 else 99.0
+        item["score"] = round(
+            max(0.0, min(1.0, (save / 100_000.0) * (1.0 / max(payback, 0.5)) ** 0.35)),
+            2,
+        )
+
     return out
 
 
@@ -380,6 +405,11 @@ def sustainability(db, days: int = 30) -> dict:
     score = 100 - ((kwh_per_seat_day - 0.4) / 1.6) * 100
     score = int(max(0, min(100, round(score))))
 
+    local_names = {
+        row[0]: row[1]
+        for row in db.execute(text("SELECT id, name FROM buildings")).fetchall()
+    }
+
     by_building = []
     for building_id, group in this.groupby("building_id"):
         if building_id is None or pd.isna(building_id):
@@ -387,6 +417,8 @@ def sustainability(db, days: int = 30) -> dict:
         b_kwh = float(group["value"].sum())
         by_building.append({
             "building_id": str(building_id),
+            "id": str(building_id),          # contract shape
+            "name": local_names.get(building_id, str(building_id)),
             "kwh": round(b_kwh, 1),
             "cost_inr": int(b_kwh * C.TARIFF_INR_PER_KWH),
             "co2_kg": round(common.kwh_to_co2(b_kwh), 1),
@@ -394,6 +426,7 @@ def sustainability(db, days: int = 30) -> dict:
 
     return {
         "kwh": round(kwh, 1),
+        "kwh_month": round(kwh, 1),      # contract shape (the UI reads kwh_month)
         "water_kl": round(water_kl, 2),
         "co2_kg": round(co2, 1),
         "cost_inr": int(kwh * C.TARIFF_INR_PER_KWH),
@@ -402,6 +435,19 @@ def sustainability(db, days: int = 30) -> dict:
         "trees_equiv": round(co2 / C.CO2_KG_PER_TREE_PER_YEAR, 1),
         "by_building": sorted(by_building, key=lambda b: b["kwh"], reverse=True),
     }
+
+
+def _grade(score: float) -> str:
+    """A-F band for a 0-100 health score."""
+    if score >= 90:
+        return "A"
+    if score >= 75:
+        return "B"
+    if score >= 60:
+        return "C"
+    if score >= 45:
+        return "D"
+    return "F"
 
 
 def asset_health(db) -> dict:
@@ -427,14 +473,19 @@ def asset_health(db) -> dict:
         ), {"b": building_id}).scalar() or 0
 
         penalty = (bad * 6) + (alerts_open * 4) + (high_risk * 3)
+        score = int(max(0, min(100, 100 - penalty)))
         out.append({
             "building_id": building_id,
+            "id": building_id,           # contract shape
             "building_name": name,
+            "name": name,
             "assets": int(total),
             "faulty_assets": int(bad),
             "open_alerts": int(alerts_open),
             "high_risk_assets": int(high_risk),
-            "health_score": int(max(0, min(100, 100 - penalty))),
+            "health_score": score,
+            "score": score,
+            "grade": _grade(score),
         })
 
     worst = db.execute(text(
@@ -448,10 +499,14 @@ def asset_health(db) -> dict:
         "buildings": sorted(out, key=lambda b: b["health_score"]),
         "worst_assets": [
             {
-                "equipment_id": row[0], "name": row[1], "room_id": row[2],
+                "equipment_id": row[0], "id": row[0],     # contract shape
+                "name": row[1], "room_id": row[2],
                 "criticality": row[3], "risk": round(float(row[4]), 3),
                 "days_to_failure": row[5],
                 "reasons": row[6] if isinstance(row[6], list) else [],
+                # the UI shows one sentence; the list stays for the drawer
+                "reason": (row[6][0] if isinstance(row[6], list) and row[6]
+                           else "Routine monitoring"),
                 "replacement_cost_inr": row[7],
             }
             for row in worst
