@@ -4,7 +4,7 @@ import * as THREE from 'three'
 
 // Sky, fog and lights for day and night. The change is eased over about a second.
 const DAY = { bg: '#050810', ambient: 0.55, hemi: 0.5, sun: 0.9 }
-const NIGHT = { bg: '#010207', ambient: 0.12, hemi: 0.1, sun: 0.1 }
+const NIGHT = { bg: '#000104', ambient: 0.04, hemi: 0.03, sun: 0.03 }
 
 const DAY_BG = new THREE.Color(DAY.bg)
 const NIGHT_BG = new THREE.Color(NIGHT.bg)

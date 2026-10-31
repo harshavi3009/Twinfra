@@ -175,7 +175,7 @@ export default function Building({
     applyLook(mats, current.current, pulse, l, hoverRef.current)
 
     nightAmt.current += ((night ? 1 : 0) - nightAmt.current) * k
-    mats.window.color.setScalar(1 + nightAmt.current * 0.8) // multiplies the per-window colour
+    mats.window.color.setScalar(1 + nightAmt.current * 2.5) // multiplies the per-window colour, so lit windows glow at night
 
     // explode / collapse floors
     explode.current += ((selected ? 1 : 0) - explode.current) * (1 - Math.exp(-dt * 3.5))
