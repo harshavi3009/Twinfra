@@ -7,6 +7,7 @@ import Trees from './Trees'
 import Building from './Building'
 import UtilityNode from './UtilityNode'
 import Effects from './Effects'
+import GestureCameraBridge from '../gestures/GestureCameraBridge.jsx'
 
 const EMPTY = []
 
@@ -30,6 +31,10 @@ export function Campus3D({
   whatIf = null,
   // eslint-disable-next-line no-unused-vars
   timeOfDay = 'day',
+  // Hand control (optional). With `gestureCommand` null -- the default -- every
+  // existing prop behaves exactly as before; no gesture code runs.
+  gestureCommand = null,
+  onGesturePick = null,
 }) {
   const buildings = campus?.buildings ?? EMPTY
   const utilities = campus?.utilities ?? EMPTY
@@ -74,6 +79,10 @@ export function Campus3D({
         maxDistance={260}
         maxPolarAngle={Math.PI / 2.15} // can't go under the ground
       />
+
+      {gestureCommand && (
+        <GestureCameraBridge commandRef={gestureCommand} onPick={onGesturePick} />
+      )}
 
       <Effects />
     </Canvas>
