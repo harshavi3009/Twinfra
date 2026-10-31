@@ -54,6 +54,7 @@ export default function Alerts() {
             key={a.id}
             alert={a}
             className="min-h-44 p-6"
+            large
             onSelect={(id) => navigate('/', { state: { entityId: id } })}
           />
         ))}
