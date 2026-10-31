@@ -176,6 +176,14 @@ export default function Building({
     applyLook(mats, current.current, pulse, l, hoverRef.current)
 
     const n = nightAmount.current
+    // The status halo is additive light, which vanishes on a bright sky. In day it is drawn normally and stronger.
+    const day = n < 0.5
+    const blending = day ? THREE.NormalBlending : THREE.AdditiveBlending
+    if (mats.glow.blending !== blending) {
+      mats.glow.blending = blending
+      mats.glow.needsUpdate = true
+    }
+    if (day) mats.glow.opacity = Math.min(1, mats.glow.opacity * 2.2)
     mats.window.color.setScalar(1 + n * 2.5) // multiplies the per-window colour, so lit windows glow at night
     mats.body.color.lerpColors(dayNightColors.body.day, dayNightColors.body.night, n)
     mats.slab.color.lerpColors(dayNightColors.slab.day, dayNightColors.slab.night, n)
