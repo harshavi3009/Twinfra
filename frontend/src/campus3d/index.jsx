@@ -47,7 +47,7 @@ export function Campus3D({
       dpr={[1, 1.75]}
       camera={{ position: [95, 80, 110], fov: 38, near: 0.5, far: 600 }}
       gl={{ antialias: false, powerPreference: 'high-performance' }}
-      style={{ width: '100%', height: '100%', background: PALETTE.bg }}
+      style={{ width: '100%', height: '100%', minHeight: 256, background: PALETTE.bg }}
     >
       <color attach="background" args={[PALETTE.bg]} />
       <fog attach="fog" args={[PALETTE.bg, 140, 330]} />

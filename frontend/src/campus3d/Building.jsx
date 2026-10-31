@@ -24,6 +24,15 @@ function getGlowTexture() {
   return glowTexture
 }
 
+// Per-frame material update (plain function: mutating three.js materials is expected here).
+function applyStatusLook(mats, color, pulse) {
+  mats.body.emissive.copy(color)
+  mats.body.emissiveIntensity = 0.12 + pulse * 0.45
+  mats.edge.color.copy(color).multiplyScalar(1.6 + pulse * 0.8)
+  mats.glow.color.copy(color)
+  mats.glow.opacity = 0.4 + pulse * 0.4
+}
+
 const labelStyle = {
   display: 'flex',
   flexDirection: 'column',
@@ -110,11 +119,7 @@ export default function Building({ data }) {
     cur.lerp(target, 1 - Math.exp(-dt * 6))
     const pulse = critical ? 0.5 + 0.5 * Math.sin(clock.elapsedTime * 4) : 0
 
-    mats.body.emissive.copy(cur)
-    mats.body.emissiveIntensity = 0.12 + pulse * 0.45
-    mats.edge.color.copy(cur).multiplyScalar(1.6 + pulse * 0.8)
-    mats.glow.color.copy(cur)
-    mats.glow.opacity = 0.4 + pulse * 0.4
+    applyStatusLook(mats, cur, pulse)
   })
 
   const dotColor = statusColor(status)
