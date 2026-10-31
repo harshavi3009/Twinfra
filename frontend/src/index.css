@@ -18,6 +18,11 @@
   --font-mono: "JetBrains Mono", ui-monospace, monospace;
 }
 
+/* Base size for the whole dashboard: Tailwind text sizes are in rem, so they all scale from this. */
+html {
+  font-size: 18px;
+}
+
 html,
 body,
 #root {
