@@ -14,7 +14,7 @@ from fastapi.staticfiles import StaticFiles
 
 load_dotenv(Path(__file__).resolve().parent.parent / ".env")
 
-from .routers import health  # noqa: E402
+from .routers import connections, core, health, readings  # noqa: E402
 from .insights import router as insights_router  # noqa: E402
 
 UPLOAD_DIR = Path(os.getenv("UPLOAD_DIR", "uploads"))
@@ -42,4 +42,7 @@ app.add_middleware(
 app.mount("/uploads", StaticFiles(directory=str(UPLOAD_DIR)), name="uploads")
 
 app.include_router(health.router)
+app.include_router(core.router)
+app.include_router(readings.router)
+app.include_router(connections.router)
 app.include_router(insights_router)
