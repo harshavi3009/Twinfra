@@ -72,6 +72,7 @@ Ticket = `{id,entity_id,equipment_id,title,description,source,priority,status,te
 <Campus3D
   campus={campusJson}            // GET /api/campus
   buildingDetail={detailOrNull}  // GET /api/buildings/{id} for the selected building
+  roomDetail={roomOrNull}        // optional: GET /api/rooms/{id} for the selected room (typed, clickable equipment markers)
   selection={{buildingId, floorId, roomId, equipmentId}}  // null fields allowed
   onSelect={(sel) => {}}         // same shape as selection
   connections={connectionsJson}  // optional, for flow lines

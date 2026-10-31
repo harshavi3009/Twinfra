@@ -1,5 +1,5 @@
-import { useState } from 'react'
-import { getAlerts, getCampus } from '../api/client.js'
+import { useEffect, useState } from 'react'
+import { getAlerts, getBuilding, getCampus, getRoom } from '../api/client.js'
 import DrillDownPanel from '../components/DrillDownPanel.jsx'
 import EntityCharts from '../components/EntityCharts.jsx'
 import KpiStrip from '../components/KpiStrip.jsx'
@@ -11,6 +11,23 @@ export default function Overview() {
   const { data: alerts } = usePolling(() => getAlerts(true))
   // Selection state lives here; the 3D view and the right panel both use it.
   const [selection, setSelection] = useState({ buildingId: null, floorId: null, roomId: null, equipmentId: null })
+
+  // Detail for the 3D drill-down (rooms of the selected building, equipment of the selected room).
+  // Campus3D ignores a detail whose id doesn't match the selection, so stale values are harmless.
+  const [buildingDetail, setBuildingDetail] = useState(null)
+  const [roomDetail, setRoomDetail] = useState(null)
+  useEffect(() => {
+    if (!selection.buildingId) return
+    let cancelled = false
+    getBuilding(selection.buildingId).then((d) => !cancelled && setBuildingDetail(d)).catch(() => {})
+    return () => { cancelled = true }
+  }, [selection.buildingId])
+  useEffect(() => {
+    if (!selection.roomId) return
+    let cancelled = false
+    getRoom(selection.roomId).then((d) => !cancelled && setRoomDetail(d)).catch(() => {})
+    return () => { cancelled = true }
+  }, [selection.roomId])
 
   if (!campus) {
     return error ? <p className="text-critical">Could not load campus: {error}</p> : <p className="text-muted">Loading…</p>
@@ -33,7 +50,13 @@ export default function Overview() {
       <KpiStrip totals={campus.totals} alerts={alerts} />
       <div className="flex h-[520px] gap-4">
         <div className="min-w-0 flex-1">
-          <Campus3D campus={campus} selection={selection} onSelect={setSelection} />
+          <Campus3D
+            campus={campus}
+            selection={selection}
+            onSelect={setSelection}
+            buildingDetail={buildingDetail}
+            roomDetail={roomDetail}
+          />
         </div>
         <aside className="w-96 shrink-0 overflow-auto">
           <DrillDownPanel
