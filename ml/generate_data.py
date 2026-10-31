@@ -89,12 +89,20 @@ def build_campus():
                 equipment.append(_make_equipment(
                     eid, f"{fid1}-R01", bid, eq_type, rated_range))
 
+    # The substation transformer sits in B3's utility room: equipment.room_id
+    # and building_id are NOT NULL in the schema, and a real campus does have a
+    # room for it. It still feeds every building via UT-SUB in connections.csv.
+    util = next((r for r in rooms if r["room_type"] == "utility_room"), None)
+    rid = util["id"] if util else rooms[0]["id"]
+    util_bid = util["building_id"] if util else rooms[0]["building_id"]
+
     for eq_type, eq_count, rated_range in C.UTILITY_EQUIPMENT:
         for _ in range(eq_count):
             eid = f"EQ-{eq_counter:04d}"
             eq_counter += 1
             equipment.append({
-                "id": eid, "room_id": None, "building_id": None, "name": "Substation Transformer 1",
+                "id": eid, "room_id": rid, "building_id": util_bid,
+                "name": "Substation Transformer 1",
                 "eq_type": eq_type, "rated_kw": round(float(rng.uniform(*rated_range)), 2),
                 "owner_dept": "Electrical", "owner_name": "Er. S. Bhosale",
                 "install_date": "1998-04-01", "warranty_until": "2008-04-01",
@@ -155,9 +163,15 @@ def build_connections(buildings, floors, equipment):
         bid = fid.split("-")[0]
         add(bid, fid, "electricity")
 
+    # the transformer is fed by the substation; everything else by its room
+    transformers = equipment[equipment["eq_type"] == "transformer"]
+    for _, eq in transformers.iterrows():
+        add("UT-SUB", eq["id"], "electricity")
+
     for _, eq in equipment.iterrows():
-        if eq["building_id"] is None:
-            add("UT-SUB", eq["id"], "electricity")
+        if eq["eq_type"] == "transformer":
+            continue          # already connected above, never via a room
+        if pd.isna(eq["room_id"]):
             continue
         add(eq["room_id"], eq["id"], "electricity")
 
@@ -244,7 +258,8 @@ def build_readings(buildings, rooms, equipment, now):
         occ = np.round(occ)
 
         base_kw = {"classroom": 1.6, "lab": 7.0, "office": 1.2, "workshop": 12.0,
-                   "library_hall": 3.0, "hostel_room": 0.6, "server_room": 6.5}[rtype]
+                   "library_hall": 3.0, "hostel_room": 0.6, "server_room": 6.5,
+                   "utility_room": 0.05}[rtype]
         if rtype == "lab":
             # lab computers follow a timetable: not every hour has a class
             timetable = (rng.random(len(idx)) > 0.35).astype(float)
@@ -279,7 +294,7 @@ def build_readings(buildings, rooms, equipment, now):
                                  "transformer", "lift"):
             continue
         rated = float(eq["rated_kw"])
-        if eq["room_id"] is None:  # transformer = everything
+        if eq["eq_type"] == "transformer":  # transformer carries the whole campus
             p = np.zeros(len(idx))
             for b in building_power:
                 p += building_power[b]
