@@ -4,6 +4,8 @@ import { Html } from '@react-three/drei'
 import * as THREE from 'three'
 import { FLOOR_HEIGHT, PALETTE, SLAB_THICKNESS, floorY, statusColor } from './constants'
 import Floor from './Floor'
+import AlertBeacon from './AlertBeacon'
+import { useDelayedReady } from './useDelayedReady'
 import RoomGrid from './RoomGrid'
 
 // Soft radial glow texture, built once and shared by every building's ground halo.
@@ -77,6 +79,7 @@ export default function Building({
   selection,
   roomDetail = null,
   onSelect,
+  labelDelay = 0, // ms before this building's label mounts (see index.jsx)
 }) {
   const { id, name, floors, position, size, status, power_kw, active_alerts } = data
   const { w, d } = size
@@ -183,6 +186,9 @@ export default function Building({
   }, [selected])
 
   const [labelHover, setLabelHover] = useState(false)
+
+  // Mount labels one after another: React drops a label that mounts at the same moment as another.
+  const labelReady = useDelayedReady(labelDelay)
   const dotColor = statusColor(status)
 
   const selectRoom = (floorId) => (roomId) => onSelect({ buildingId: id, floorId, roomId })
@@ -248,6 +254,8 @@ export default function Building({
       })}
 
       <group ref={labelRef}>
+        {active_alerts > 0 && <AlertBeacon y={5.5} />}
+        {labelReady && (
         <Html center distanceFactor={110} zIndexRange={[20, 0]} style={{ pointerEvents: 'none' }}>
           <div
             style={{
@@ -284,6 +292,7 @@ export default function Building({
             )}
           </div>
         </Html>
+        )}
       </group>
     </group>
   )

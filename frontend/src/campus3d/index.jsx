@@ -97,7 +97,7 @@ export function Campus3D({
 
         <Ground buildings={buildings} />
         <Trees buildings={buildings} utilities={utilities} />
-        {buildings.map((b) => {
+        {buildings.map((b, i) => {
           const selected = b.id === selection.buildingId
           return (
             <Building
@@ -109,11 +109,12 @@ export function Campus3D({
               selection={selection}
               roomDetail={selected ? roomDetail : null}
               onSelect={select}
+              labelDelay={(i + 1) * 150}
             />
           )
         })}
-        {utilities.map((u) => (
-          <UtilityNode key={u.id} data={u} />
+        {utilities.map((u, i) => (
+          <UtilityNode key={u.id} data={u} labelDelay={(buildings.length + i + 1) * 150} />
         ))}
 
         <CameraRig
