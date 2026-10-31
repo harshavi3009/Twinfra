@@ -2,12 +2,49 @@
 // The phone is a read-only viewer: detection runs on the campus server.
 import 'dart:convert';
 import 'package:http/http.dart' as http;
+import 'package:shared_preferences/shared_preferences.dart';
 
 class Api {
-  // LAN default. Editable in Settings — the laptop IP changes when you switch
-  // networks, and rebuilding the APK to fix an IP is not a thing you want to do
-  // on demo day.
-  static String baseUrl = 'http://127.0.0.1:8010';
+  // The phone must reach the server from ANY network, so this is a normal
+  // hostname:port and never a loopback address. 127.0.0.1 only works through an
+  // `adb reverse` USB tunnel, which means a fresh install would show nothing
+  // the moment the cable is unplugged.
+  //
+  // Override in Settings (persisted), or at build time with
+  //   --dart-define=TWINFRA_API=https://your-host
+  // A build-time flag keeps demo builds pointed at the right place without
+  // anyone having to type an IP on a phone.
+  static const String _defaultBaseUrl = String.fromEnvironment(
+    'TWINFRA_API',
+    defaultValue: 'http://localhost:8010',
+  );
+
+  static String baseUrl = _defaultBaseUrl;
+  static const _prefsKey = 'twinfra.apiBaseUrl';
+
+  /// Loads a previously saved override, if any. Call once at startup, before
+  /// the first request.
+  static Future<void> loadSaved() async {
+    final prefs = await SharedPreferences.getInstance();
+    final saved = prefs.getString(_prefsKey);
+    if (saved != null && saved.isNotEmpty) baseUrl = saved;
+  }
+
+  /// Saves an override so it survives an app restart. Passing the default back
+  /// in clears it, so `--dart-define` keeps working for demo builds.
+  static Future<void> saveBaseUrl(String url) async {
+    final clean = url.trim().replaceAll(RegExp(r'/+$'), '');
+    final prefs = await SharedPreferences.getInstance();
+    if (clean.isEmpty || clean == _defaultBaseUrl) {
+      await prefs.remove(_prefsKey);
+      baseUrl = _defaultBaseUrl;
+    } else {
+      await prefs.setString(_prefsKey, clean);
+      baseUrl = clean;
+    }
+  }
+
+  static bool get isDefault => baseUrl == _defaultBaseUrl;
 
   static Future<dynamic> _get(String path) async {
     final res = await http

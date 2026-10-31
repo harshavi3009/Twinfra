@@ -6,7 +6,11 @@ import equipmentMock from '../mocks/equipment_EQ-0042.json'
 import alertsMock from '../mocks/alerts.json'
 import ticketsMock from '../mocks/tickets.json'
 
-const BASE_URL = import.meta.env.VITE_API_URL || 'http://localhost:8000'
+// When the app is served BY the backend (tunnel, LAN, remote host), requests must
+// go back to whatever origin served the page. Setting VITE_API_URL to an empty
+// string means "same origin". Using `||` here would treat '' as unset and fall
+// back to localhost, which resolves to the *phone* once the app is off-network.
+const BASE_URL = import.meta.env.VITE_API_URL ?? 'http://localhost:8000'
 export const USE_MOCK = import.meta.env.VITE_USE_MOCK === 'true'
 
 // Mock mode: simulate a little network delay so loading states are visible.

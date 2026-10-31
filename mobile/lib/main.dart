@@ -9,6 +9,9 @@ import 'screens/settings_screen.dart';
 
 void main() async {
   WidgetsFlutterBinding.ensureInitialized();
+  // Restore a previously entered server URL before the first request, so the
+  // app opens against the right host without the user retyping it.
+  await Api.loadSaved();
   await AlertNotifier.init();
   runApp(const TwinFraApp());
 }

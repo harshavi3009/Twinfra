@@ -3,9 +3,9 @@ import '../api.dart';
 import '../theme.dart';
 import '../notifier.dart';
 
-/// Server URL lives here rather than being a compile-time constant, because the
-/// LAN IP changes between networks and rebuilding an APK to fix an IP is not
-/// something you want to do on demo day.
+/// Server URL is editable and persisted, because the address changes between
+/// networks and rebuilding an APK to fix an IP is not something you want to do
+/// on demo day.
 class SettingsScreen extends StatefulWidget {
   const SettingsScreen({super.key});
 
@@ -28,6 +28,9 @@ class _SettingsScreenState extends State<SettingsScreen> {
     Api.baseUrl = _url.text.trim().replaceAll(RegExp(r'/+$'), '');
     try {
       final campus = await Api.campus();
+      // Persist only after a successful check, so a typo can't leave the app
+      // pointing at a dead host on next launch.
+      await Api.saveBaseUrl(_url.text);
       setState(() {
         _status = 'Connected · ${campus.buildings.length} buildings, '
             '${campus.totals.openTickets} open tickets';
