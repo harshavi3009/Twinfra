@@ -2,6 +2,7 @@ import { useMemo } from 'react'
 import * as THREE from 'three'
 import { Html } from '@react-three/drei'
 import { PALETTE } from './constants'
+import { useDelayedReady } from './useDelayedReady'
 
 const bodyMat = new THREE.MeshStandardMaterial({ color: '#0e1830', roughness: 0.5, metalness: 0.5 })
 
@@ -94,16 +95,20 @@ function WaterTank() {
 }
 
 // Substation (electricity) or water tank, chosen by the `type` from /api/campus utilities.
-export default function UtilityNode({ data }) {
+export default function UtilityNode({ data, labelDelay = 0 }) {
   const { type, position } = data
   const isWater = /tank|water/i.test(type ?? '')
   const label = isWater ? 'Water tank' : 'Substation'
+  // Same one-at-a-time label mounting as Building (see useDelayedReady).
+  const labelReady = useDelayedReady(labelDelay)
   return (
     <group position={[position.x, 0, position.z]}>
       {isWater ? <WaterTank /> : <Substation />}
+      {labelReady && (
       <Html position={[0, isWater ? 10 : 6.5, 0]} center distanceFactor={110} zIndexRange={[20, 0]}>
         <div style={tagStyle}>{isWater ? '💧' : '⚡'} {label}</div>
       </Html>
+      )}
     </group>
   )
 }
