@@ -82,6 +82,7 @@ export default function Building({
   labelDelay = 0, // ms before this building's label mounts (see index.jsx)
   sim = null, // one whatIf row ({ status_after, power_kw_after }) when a what-if is shown
   night = false, // night makes the lit windows glow brighter
+  highlightIds = null, // impact analysis: room ids to flash (see RoomGrid)
 }) {
   const { id, name, floors, position, size, active_alerts } = data
   // Simulated values replace the live ones while a what-if is shown; the colour lerp animates the change.
@@ -256,6 +257,7 @@ export default function Building({
                 roomDetail={roomDetail}
                 selectedEquipmentId={selection.equipmentId}
                 onPickEquipment={pickEquipment}
+                highlightIds={highlightIds}
               />
             )}
           </Floor>

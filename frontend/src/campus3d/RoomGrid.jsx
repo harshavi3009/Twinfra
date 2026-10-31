@@ -32,7 +32,9 @@ function applyRoomLook(mat, color, intensity) {
   mat.emissiveIntensity = intensity
 }
 
-function Room({ room, cell, selected, anySelected, onSelect, equipment, selectedEquipmentId, onPickEquipment }) {
+const IMPACT = new THREE.Color('#ef4444')
+
+function Room({ room, cell, selected, anySelected, onSelect, equipment, selectedEquipmentId, onPickEquipment, flagged }) {
   const [hover, setHover] = useState(false)
   const ratio = room.baseline_kw > 0 ? room.power_kw / room.baseline_kw : 1
   const color = useMemo(() => heatColor(ratio), [ratio])
@@ -53,7 +55,9 @@ function Room({ room, cell, selected, anySelected, onSelect, equipment, selected
   useFrame(({ clock }) => {
     const pulse = critical ? 0.5 + 0.5 * Math.sin(clock.elapsedTime * 4.5) : 0
     const base = selected ? 1.1 : anySelected ? 0.45 : 0.7
-    applyRoomLook(mat, color, base + pulse * 0.9 + (hover ? 0.5 : 0))
+    // Impact-affected rooms flash red fast.
+    const flash = flagged ? 0.5 + 0.5 * Math.sin(clock.elapsedTime * 10) : 0
+    applyRoomLook(mat, flagged ? IMPACT : color, base + pulse * 0.9 + flash * 1.4 + (hover ? 0.5 : 0))
   })
 
   return (
@@ -116,8 +120,9 @@ function Room({ room, cell, selected, anySelected, onSelect, equipment, selected
 }
 
 // Rooms of one floor as a heatmap grid on its slab. Lives inside the Floor group so it moves with it.
-export default function RoomGrid({ floor, size, selectedRoomId, anyRoomSelected, onSelectRoom, roomDetail, selectedEquipmentId, onPickEquipment }) {
+export default function RoomGrid({ floor, size, selectedRoomId, anyRoomSelected, onSelectRoom, roomDetail, selectedEquipmentId, onPickEquipment, highlightIds = null }) {
   const cells = useMemo(() => roomCells(floor.rooms.length, size), [floor.rooms.length, size])
+  const flagged = useMemo(() => new Set(highlightIds ?? []), [highlightIds])
   return (
     <group>
       {floor.rooms.map((room, i) => (
@@ -131,6 +136,7 @@ export default function RoomGrid({ floor, size, selectedRoomId, anyRoomSelected,
           equipment={roomDetail?.id === room.id ? roomDetail.equipment : null}
           selectedEquipmentId={selectedEquipmentId}
           onPickEquipment={onPickEquipment}
+          flagged={flagged.has(room.id)}
         />
       ))}
     </group>
