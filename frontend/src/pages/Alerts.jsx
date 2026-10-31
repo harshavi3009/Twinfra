@@ -50,7 +50,7 @@ export default function Alerts() {
       {!alerts && !error && <div className="mt-4 h-24 animate-pulse rounded-lg bg-panel" />}
       <div className="mt-4 grid max-w-3xl gap-2">
         {shown.map((a) => (
-          <AlertCard key={a.id} alert={a} onSelect={() => navigate('/')} />
+          <AlertCard key={a.id} alert={a} onSelect={(id) => navigate('/', { state: { entityId: id } })} />
         ))}
       </div>
       {alerts && shown.length === 0 && <p className="mt-4 text-sm text-muted">No alerts match these filters.</p>}
