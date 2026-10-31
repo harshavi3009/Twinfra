@@ -29,6 +29,10 @@ class _Campus3DScreenState extends State<Campus3DScreen> {
     _controller = WebViewController()
       ..setJavaScriptMode(JavaScriptMode.unrestricted)
       ..setBackgroundColor(T.bg)
+      ..setOnConsoleMessage((m) {
+        // Surfaced to logcat so WebGL/scene failures aren't invisible.
+        debugPrint('WEBVIEW[${m.level}] ${m.message}');
+      })
       ..setNavigationDelegate(
         NavigationDelegate(
           onPageFinished: (_) async {
@@ -40,10 +44,32 @@ class _Campus3DScreenState extends State<Campus3DScreen> {
                 var s = document.createElement('style');
                 s.textContent = `
                   aside { display: none !important; }
-                  body { overflow: hidden !important; }
                   canvas { touch-action: none !important; }
                 `;
                 document.head.appendChild(s);
+
+                // The 3D wrapper is height:100% of a flex parent that only has
+                // height on desktop. With the sidebar hidden it resolves to 0 on
+                // a phone, so the canvas draws into nothing. Find the canvas and
+                // give its ancestors an explicit height.
+                function sizeCanvas() {
+                  var c = document.querySelector('canvas');
+                  if (!c) return false;
+                  var el = c.parentElement;
+                  for (var i = 0; i < 3 && el; i++) {
+                    el.style.height = '60vh';
+                    el.style.minHeight = '260px';
+                    el = el.parentElement;
+                  }
+                  return true;
+                }
+                if (!sizeCanvas()) {
+                  var n = 0;
+                  var t = setInterval(function() {
+                    if (sizeCanvas() || ++n > 40) clearInterval(t);
+                  }, 250);
+                }
+                window.addEventListener('resize', sizeCanvas);
               })();
             ''');
             if (mounted) setState(() => _loading = false);
