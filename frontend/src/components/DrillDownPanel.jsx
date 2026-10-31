@@ -4,6 +4,13 @@ import AlertCard from './AlertCard.jsx'
 import AssetCard from './AssetCard.jsx'
 
 const DOT = { ok: 'bg-ok', warning: 'bg-warning', critical: 'bg-critical', offline: 'bg-offline' }
+// Border per building status: red = risk, amber = warning, green = safe.
+const BUILDING_BORDER = {
+  ok: 'border-ok shadow-[0_0_8px_rgba(63,209,135,0.5)]',
+  warning: 'border-warning shadow-[0_0_8px_rgba(245,166,35,0.5)]',
+  critical: 'border-critical shadow-[0_0_8px_rgba(255,77,109,0.6)]',
+  offline: 'border-line',
+}
 const EMPTY = { buildingId: null, floorId: null, roomId: null, equipmentId: null }
 
 // Loads one thing from the API whenever `id` changes.
@@ -127,7 +134,7 @@ export default function DrillDownPanel({ campus, alerts, selection, onSelect, on
           key={b.id}
           type="button"
           onClick={() => onSelect({ ...EMPTY, buildingId: b.id })}
-          className="flex w-full items-center gap-2 rounded-lg border border-line bg-panel p-2.5 text-left hover:border-accent/50"
+          className={`flex w-full items-center gap-2 rounded-lg border-2 bg-panel p-2.5 text-left ${BUILDING_BORDER[b.status]}`}
         >
           <span className={`h-2.5 w-2.5 rounded-full ${DOT[b.status]}`} />
           <span className="text-sm">{b.name}</span>
