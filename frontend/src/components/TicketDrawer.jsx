@@ -1,5 +1,5 @@
 import { useEffect, useState } from 'react'
-import { getTechnicians, suggestTechnicians, updateTicket } from '../api/client.js'
+import { assetUrl, getTechnicians, suggestTechnicians, updateTicket } from '../api/client.js'
 import EvidenceSparkline from './EvidenceSparkline.jsx'
 import SlaCountdown from './SlaCountdown.jsx'
 import VerificationBadge from './VerificationBadge.jsx'
@@ -129,7 +129,7 @@ export default function TicketDrawer({ ticket, onClose }) {
           <section>
             <h3 className="mb-1 text-xs font-semibold uppercase tracking-wide text-muted">Technician note</h3>
             <p className="text-sm">{ticket.completion_note}</p>
-            {ticket.completion_photo && <img src={ticket.completion_photo} alt="Completion" className="mt-2 rounded-md" />}
+            {ticket.completion_photo && <img src={assetUrl(ticket.completion_photo)} alt="Completion" className="mt-2 rounded-md" />}
           </section>
         )}
 

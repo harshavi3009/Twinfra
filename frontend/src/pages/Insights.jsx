@@ -46,10 +46,12 @@ export default function Insights() {
                       <div className="font-mono text-xs text-muted">{i.entity_id}</div>
                     </td>
                     <td className="px-3 py-2 capitalize">{i.risk}</td>
-                    <td className="px-3 py-2 font-mono">{i.downtime_hours} h</td>
+                    <td className="px-3 py-2 font-mono">{i.downtime_hours == null ? '—' : `${i.downtime_hours} h`}</td>
                     <td className="px-3 py-2 text-right font-mono">{inr(i.cost_inr)}</td>
                     <td className="px-3 py-2 text-right font-mono text-ok">{inr(i.savings_inr_month)}</td>
-                    <td className="px-3 py-2 text-right font-mono">{i.payback_months === 0 ? 'Immediate' : `${i.payback_months} mo`}</td>
+                    <td className="px-3 py-2 text-right font-mono">
+                      {i.payback_months == null ? '—' : i.payback_months === 0 ? 'Immediate' : `${i.payback_months} mo`}
+                    </td>
                   </tr>
                 ))}
               </tbody>

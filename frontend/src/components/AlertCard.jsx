@@ -1,4 +1,4 @@
-export const SEVERITY_STYLE = {
+const SEVERITY_STYLE = {
   critical: 'border-critical/50 bg-critical/10 text-critical',
   high: 'border-warning/50 bg-warning/10 text-warning',
   medium: 'border-warning/30 bg-warning/5 text-warning',

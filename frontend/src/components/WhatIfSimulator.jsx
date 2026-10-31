@@ -1,11 +1,12 @@
 import { useEffect, useRef, useState } from 'react'
 import { runWhatIf } from '../api/client.js'
 
+// Action names match the backend's WHATIF_LIBRARY (backend/app/insights/reporting.py).
 const ACTIONS = [
-  { type: 'led_retrofit', label: 'LED retrofit (all buildings)' },
-  { type: 'ac_setpoint', label: 'AC setpoint 22 → 26 °C' },
-  { type: 'close_after', label: 'Close buildings after 6 pm' },
-  { type: 'replace_equipment', label: 'Replace old equipment' },
+  { type: 'led_retrofit', label: 'LED retrofit (40% of lighting)' },
+  { type: 'schedule_ac', label: 'ACs off after hours (22%)' },
+  { type: 'fix_ghost_load', label: 'Eliminate ghost loads (90%)' },
+  { type: 'solar_roof', label: 'Rooftop solar (15%)' },
 ]
 
 const inr = (n) => `₹${Math.round(n).toLocaleString('en-IN')}`
@@ -31,7 +32,7 @@ export default function WhatIfSimulator({ onResult }) {
   const seq = useRef(0)
 
   useEffect(() => {
-    const actions = ACTIONS.filter((a) => on[a.type]).map((a) => ({ type: a.type, target: 'all' }))
+    const actions = ACTIONS.filter((a) => on[a.type]).map((a) => a.type)
     if (actions.length === 0) {
       setResult(null)
       onResult?.(null)

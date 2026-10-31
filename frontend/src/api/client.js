@@ -32,6 +32,11 @@ const qs = (params) => {
   return s ? `?${s}` : ''
 }
 
+// The backend returns uploaded photos as /uploads/x.jpg; resolve them against the API host.
+export const assetUrl = (path) =>
+  !path || USE_MOCK || /^(blob:|https?:)/.test(path) ? path : `${BASE_URL}${path}`
+
+
 // ---- Core ----
 export const getCampus = () => (USE_MOCK ? mock(campusMock) : request('/api/campus'))
 
@@ -251,6 +256,10 @@ const TARIFF = 9
 const CO2_PER_KWH = 0.71
 const BASE_KWH_MONTH = 182000
 
+// What-if actions as the backend names them, with the share of load each one removes.
+// Mirrors WHATIF_LIBRARY in backend/app/insights/reporting.py.
+const WHATIF_REDUCTION = { led_retrofit: 0.4, schedule_ac: 0.22, fix_ghost_load: 0.9, solar_roof: 0.15 }
+
 const INTERVENTIONS = [
   { rank: 1, title: 'Fix ghost load in Lab 101', entity_id: 'B1-F1-R01', risk: 'low', downtime_hours: 1, cost_inr: 2500, savings_inr_month: 18400, payback_months: 0.1, score: 0.94, why: 'Lab 101 draws 2.5x its normal power while empty. Switching off idle equipment costs almost nothing.' },
   { rank: 2, title: 'Replace Split AC 2 before it fails', entity_id: 'EQ-0042', risk: 'medium', downtime_hours: 6, cost_inr: 45000, savings_inr_month: 6200, payback_months: 7.3, score: 0.81, why: 'Predicted failure in ~9 days (risk 82%). A planned swap avoids an emergency repair.' },
@@ -259,69 +268,114 @@ const INTERVENTIONS = [
   { rank: 5, title: 'AC setpoint 22→26 °C in IT Block', entity_id: 'B2', risk: 'low', downtime_hours: 0, cost_inr: 0, savings_inr_month: 9800, payback_months: 0, score: 0.66, why: 'Raising the setpoint 4 °C lowers cooling load with no capital cost.' },
 ]
 
-// Share of building load each action saves in this simple model (assumed).
-const ACTION_SAVING = { led_retrofit: 0.12, ac_setpoint: 0.08, close_after: 0.06, replace_equipment: 0.04 }
+// The backend's insights routes use their own field names. The adapters below map them to the
+// contract shapes the UI reads. Remove them once contract/api.md and the routes agree.
+const GRADE = (score) => (score >= 90 ? 'A' : score >= 75 ? 'B' : score >= 60 ? 'C' : score >= 45 ? 'D' : 'F')
+const RISK_FROM_SEVERITY = { critical: 'high', high: 'high', medium: 'medium', low: 'low' }
 
-export const getInterventions = () => (USE_MOCK ? mock(INTERVENTIONS) : request('/api/insights/interventions'))
+const toIntervention = (i, n) => ({
+  rank: n + 1,
+  title: i.title,
+  entity_id: i.entity_id,
+  risk: RISK_FROM_SEVERITY[i.severity] || 'low',
+  downtime_hours: null, // the backend does not estimate downtime yet
+  cost_inr: i.capex_inr,
+  savings_inr_month: i.saving_inr_month,
+  payback_months: i.payback_months,
+  score: null,
+  why: i.reason,
+})
 
-export const runWhatIf = (actions) => {
-  if (!USE_MOCK) return request('/api/insights/whatif', json('POST', { actions }))
-  const campus = campusMock
-  const pct = (b) =>
-    actions.reduce((s, a) => (a.target === 'all' || a.target === b.id ? s + (ACTION_SAVING[a.type] || 0) : s), 0)
-  const per_building = campus.buildings.map((b) => {
-    const after = +(b.power_kw * (1 - Math.min(0.5, pct(b)))).toFixed(1)
-    return { id: b.id, power_kw_after: after, status_after: after > b.baseline_kw * 1.15 ? 'warning' : 'ok' }
-  })
-  const baseline_kwh = BASE_KWH_MONTH
-  const saved_fraction = per_building.reduce((s, b, i) => s + (campus.buildings[i].power_kw - b.power_kw_after), 0) / campus.totals.power_kw
-  const scenario_kwh = Math.round(baseline_kwh * (1 - saved_fraction))
-  const cost = (kwh) => Math.round(kwh * TARIFF)
-  const co2 = (kwh) => Math.round(kwh * CO2_PER_KWH)
-  return mock(
-    {
-      baseline: { kwh_month: baseline_kwh, cost_inr: cost(baseline_kwh), co2_kg: co2(baseline_kwh) },
-      scenario: { kwh_month: scenario_kwh, cost_inr: cost(scenario_kwh), co2_kg: co2(scenario_kwh) },
-      savings: {
-        kwh_month: baseline_kwh - scenario_kwh,
-        cost_inr: cost(baseline_kwh - scenario_kwh),
-        co2_kg: co2(baseline_kwh - scenario_kwh),
-      },
-      per_building,
-    },
-    200,
-  )
+export const getInterventions = async () => {
+  if (USE_MOCK) return mock(INTERVENTIONS)
+  const rows = await request('/api/insights/interventions')
+  return rows.map(toIntervention)
 }
 
-export const getSustainabilityReport = (days = 30) => {
-  if (!USE_MOCK) return request(`/api/insights/reports/sustainability${qs({ days })}`)
-  const kwh = Math.round(BASE_KWH_MONTH * (days / 30))
-  return mock({
-    kwh,
-    water_kl: Math.round(campusMock.totals.water_lpm * 60 * 24 * (days / 1000)),
-    co2_kg: Math.round(kwh * CO2_PER_KWH),
-    cost_inr: Math.round(kwh * TARIFF),
-    vs_prev_pct: -4.2,
-    score: 72,
-    trees_equiv: Math.round((kwh * CO2_PER_KWH) / 21), // assumed: ~21 kg CO₂ absorbed per tree per year
-    by_building: campusMock.buildings.map((b) => ({ id: b.id, name: b.name, kwh: Math.round(kwh * (b.power_kw / campusMock.totals.power_kw)) })),
-  })
+const whatIfCard = (kwh) => ({
+  kwh_month: Math.round(kwh),
+  cost_inr: Math.round(kwh * TARIFF),
+  co2_kg: Math.round(kwh * CO2_PER_KWH),
+})
+
+// `keep` is the share of today's load left after the actions (0..1).
+const whatIfResult = (buildings, baseKwh, keep) => {
+  const savedKwh = baseKwh * (1 - keep)
+  return {
+    baseline: whatIfCard(baseKwh),
+    scenario: whatIfCard(baseKwh * keep),
+    savings: { kwh_month: Math.round(savedKwh), cost_inr: Math.round(savedKwh * TARIFF), co2_kg: Math.round(savedKwh * CO2_PER_KWH) },
+    per_building: buildings.map((b) => {
+      const after = +(b.power_kw * keep).toFixed(1)
+      return { id: b.id, power_kw_after: after, status_after: after > b.baseline_kw * 1.15 ? 'warning' : 'ok' }
+    }),
+  }
 }
 
-export const getAssetHealthReport = () =>
-  USE_MOCK
-    ? mock({
-        buildings: [
-          { id: 'B1', grade: 'C', score: 61 },
-          { id: 'B2', grade: 'D', score: 48 },
-          { id: 'B3', grade: 'B', score: 79 },
-          { id: 'B4', grade: 'A', score: 92 },
-          { id: 'B5', grade: 'B', score: 74 },
-          { id: 'B6', grade: 'A', score: 90 },
-        ],
-        worst_assets: [
-          { id: 'EQ-0042', name: 'Split AC 2', risk: 0.82, reason: 'High runtime, 2 anomalies in 7 days' },
-          { id: 'EQ-0120', name: 'Lathe 3', risk: 0.64, reason: 'Vibration reported, repair in last 90 days' },
-        ],
-      })
-    : request('/api/insights/reports/asset-health')
+// `actions` are backend action names, e.g. ['led_retrofit', 'schedule_ac'].
+export const runWhatIf = async (actions) => {
+  if (USE_MOCK) {
+    const keep = actions.reduce((k, a) => k * (1 - (WHATIF_REDUCTION[a] || 0)), 1)
+    return mock(whatIfResult(campusMock.buildings, BASE_KWH_MONTH, keep))
+  }
+  const [r, campus] = await Promise.all([
+    request('/api/insights/whatif', json('POST', { actions })),
+    getCampus(),
+  ])
+  const keep = r.baseline.kwh ? r.projected.kwh / r.baseline.kwh : 1
+  return whatIfResult(campus.buildings, r.baseline.kwh, keep)
+}
+
+export const getSustainabilityReport = async (days = 30) => {
+  if (USE_MOCK) {
+    const kwh = Math.round(BASE_KWH_MONTH * (days / 30))
+    return mock({
+      kwh,
+      water_kl: Math.round(campusMock.totals.water_lpm * 60 * 24 * (days / 1000)),
+      co2_kg: Math.round(kwh * CO2_PER_KWH),
+      cost_inr: Math.round(kwh * TARIFF),
+      vs_prev_pct: -4.2,
+      score: 72,
+      trees_equiv: Math.round((kwh * CO2_PER_KWH) / 21), // assumed: ~21 kg CO₂ absorbed per tree per year
+      by_building: campusMock.buildings.map((b) => ({ id: b.id, name: b.name, kwh: Math.round(kwh * (b.power_kw / campusMock.totals.power_kw)) })),
+    })
+  }
+  const [r, campus] = await Promise.all([
+    request(`/api/insights/reports/sustainability${qs({ days })}`),
+    getCampus(),
+  ])
+  const names = Object.fromEntries(campus.buildings.map((b) => [b.id, b.name]))
+  return {
+    ...r,
+    by_building: r.by_building.map((b) => ({ id: b.building_id, name: names[b.building_id] || b.building_id, kwh: b.kwh })),
+  }
+}
+
+export const getAssetHealthReport = async () => {
+  if (USE_MOCK) {
+    return mock({
+      buildings: [
+        { id: 'B1', grade: 'C', score: 61 },
+        { id: 'B2', grade: 'D', score: 48 },
+        { id: 'B3', grade: 'B', score: 79 },
+        { id: 'B4', grade: 'A', score: 92 },
+        { id: 'B5', grade: 'B', score: 74 },
+        { id: 'B6', grade: 'A', score: 90 },
+      ],
+      worst_assets: [
+        { id: 'EQ-0042', name: 'Split AC 2', risk: 0.82, reason: 'High runtime, 2 anomalies in 7 days' },
+        { id: 'EQ-0120', name: 'Lathe 3', risk: 0.64, reason: 'Vibration reported, repair in last 90 days' },
+      ],
+    })
+  }
+  const r = await request('/api/insights/reports/asset-health')
+  return {
+    buildings: r.buildings.map((b) => ({ id: b.building_id, grade: GRADE(b.health_score), score: b.health_score })),
+    worst_assets: r.worst_assets.map((a) => ({
+      id: a.equipment_id,
+      name: a.name,
+      risk: a.risk,
+      reason: a.reasons.length ? a.reasons.join(' · ') : `${a.criticality} criticality`,
+    })),
+  }
+}

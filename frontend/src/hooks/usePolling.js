@@ -7,7 +7,11 @@ export function usePolling(fetcher, ms = POLL_MS) {
   const [data, setData] = useState(null)
   const [error, setError] = useState(null)
   const fetchRef = useRef(fetcher)
-  fetchRef.current = fetcher
+
+  // Keep the latest fetcher without restarting the timer on every render.
+  useEffect(() => {
+    fetchRef.current = fetcher
+  })
 
   useEffect(() => {
     let alive = true
