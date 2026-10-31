@@ -229,11 +229,57 @@ test('hand leaving the frame resets state so the next entry does not jump', () =
   assert.equal(orbits.length, 0, 'must not jump after the hand reappears')
 })
 
+test('a pinch must be held before it selects', () => {
+  // Instant selection meant moving your hand into position with the fingers
+  // already together fired on whatever the cursor crossed at that moment.
+  const h = harness({ stableFrames: 1 })
+  const pinching = makeHand({ reach: [1, 0, 0, 0], pinch: true })
+  h.push([pinching]) // first pinched frame: starts the hold, must not select
+  assert.equal(h.names().filter((n) => n === 'select').length, 0)
+})
+
 test('pinch emits select once, not every frame', () => {
   const h = harness({ stableFrames: 1 })
-  const pinching = makeHand({ reach: [1,0,0,0], pinch: true })
-  for (let i = 0; i < 5; i += 1) h.push([pinching])
+  const pinching = makeHand({ reach: [1, 0, 0, 0], pinch: true })
+  for (let i = 0; i < 40; i += 1) {
+    h.advance(1 / 30)
+    h.push([pinching])
+  }
   assert.equal(h.names().filter((n) => n === 'select').length, 1)
+})
+
+test('selecting needs the full hold, not just one frame', () => {
+  const h = harness({ stableFrames: 1 })
+  const pinching = makeHand({ reach: [1, 0, 0, 0], pinch: true })
+  // 100ms of pinch: shorter than the 350ms hold, so nothing fires
+  for (let i = 0; i < 3; i += 1) {
+    h.advance(1 / 30)
+    h.push([pinching])
+  }
+  assert.equal(h.names().filter((n) => n === 'select').length, 0)
+  // keep holding past the threshold -> exactly one select
+  for (let i = 0; i < 20; i += 1) {
+    h.advance(1 / 30)
+    h.push([pinching])
+  }
+  assert.equal(h.names().filter((n) => n === 'select').length, 1)
+})
+
+test('releasing the pinch re-arms it for the next selection', () => {
+  const h = harness({ stableFrames: 1 })
+  const pinching = makeHand({ reach: [1, 0, 0, 0], pinch: true })
+  const pointing = makeHand({ reach: [1, 0, 0, 0] })
+  const hold = () => {
+    for (let i = 0; i < 20; i += 1) {
+      h.advance(1 / 30)
+      h.push([pinching])
+    }
+  }
+  hold()
+  assert.equal(h.names().filter((n) => n === 'select').length, 1)
+  h.push([pointing]) // open the fingers
+  hold()
+  assert.equal(h.names().filter((n) => n === 'select').length, 2)
 })
 
 // ---------------------------------------------------------------- camera contract

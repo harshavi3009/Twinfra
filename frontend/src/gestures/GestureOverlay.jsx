@@ -51,7 +51,7 @@ export function GestureToggleButton({ enabled, onToggle }) {
   )
 }
 
-export function GestureHud({ gesture, error, ready, videoRef, controllerRef, debug, onDebugToggle, cursorPos }) {
+export function GestureHud({ gesture, error, ready, videoRef, controllerRef, debug, onDebugToggle }) {
   return (
     <div className="pointer-events-auto absolute bottom-3 left-3 z-10 w-52 overflow-hidden rounded-md border border-white/15 bg-black/75 backdrop-blur">
       <video
@@ -80,28 +80,56 @@ export function GestureHud({ gesture, error, ready, videoRef, controllerRef, deb
         diagnostics
       </label>
       {debug && <DebugRows controllerRef={controllerRef} />}
-      <FingerReticle pos={cursorPos} />
     </div>
   )
 }
 
 /**
- * A dot under the fingertip while pointing. Without it the point gesture is
- * completely invisible -- it emits no camera command, so the screen gives no
- * feedback at all and it reads as broken.
+ * The fingertip pointer, rendered over the WHOLE window rather than inside the
+ * small webcam box.
+ *
+ * It has to be a sibling of the HUD, not a child: the HUD is a 13rem-wide
+ * `overflow-hidden` panel in the corner of the 3D pane, so a reticle nested
+ * inside it was clipped to that box and could never appear where you were
+ * actually pointing. `position: fixed` alone is not enough -- an ancestor with
+ * `overflow: hidden` still clips it.
+ *
+ * While you hold a pinch the ring fills, so you can see the select arming and
+ * abort it by opening your fingers.
  */
-function FingerReticle({ pos }) {
+export function FingerReticle({ pos, holdMs = 0, holdTargetMs = 350 }) {
   if (!pos) return null
+  const progress = Math.max(0, Math.min(1, holdMs / holdTargetMs))
+  const armed = progress >= 1
+  const size = 34
+  const r = size / 2 - 3
+  const circumference = 2 * Math.PI * r
+
   return (
     <div
-      className="pointer-events-none fixed z-40"
+      className="pointer-events-none fixed z-[60]"
       style={{
         left: `${pos[0] * 100}%`,
         top: `${pos[1] * 100}%`,
         transform: 'translate(-50%, -50%)',
       }}
     >
-      <div className="h-4 w-4 rounded-full border-2 border-emerald-400/90 bg-emerald-400/30" />
+      <svg width={size} height={size} className="-rotate-90">
+        {/* faint track so the pointer is visible even before you pinch */}
+        <circle cx={size / 2} cy={size / 2} r={r} fill="rgba(16,185,129,0.15)"
+          stroke="rgba(16,185,129,0.35)" strokeWidth="2" />
+        {/* fills as the pinch is held */}
+        <circle
+          cx={size / 2} cy={size / 2} r={r}
+          fill="none"
+          stroke={armed ? '#34d399' : '#a7f3d0'}
+          strokeWidth="3"
+          strokeLinecap="round"
+          strokeDasharray={circumference}
+          strokeDashoffset={circumference * (1 - progress)}
+        />
+        {armed && <circle cx={size / 2} cy={size / 2} r={3} fill="#34d399" />}
+      </svg>
     </div>
   )
 }

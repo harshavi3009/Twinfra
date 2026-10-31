@@ -19,6 +19,8 @@ export function useHandGestures({ enabled = false, videoRef, onCommand } = {}) {
   const [debug, setDebug] = useState(false)
   /** Fingertip position while pointing, in 0..1 screen space, or null. */
   const [cursorPos, setCursorPos] = useState(null)
+  /** How long the current pinch has been held, in ms (drives the reticle ring). */
+  const [cursorHold, setCursorHold] = useState(0)
   const cursorRef = useRef(null)
 
   // `__gestureDebug(true)` in the console turns the diagnostics panel on.
@@ -33,7 +35,6 @@ export function useHandGestures({ enabled = false, videoRef, onCommand } = {}) {
   /** Queue of unconsumed camera commands; the bridge drains it each frame. */
   const commandQueueRef = useRef([])
   let commandSeq = 0
-  const commandRef = commandQueueRef
   const controllerRef = useRef(null)
   const trackerRef = useRef(null)
   const onCommandRef = useRef(onCommand)
@@ -43,6 +44,16 @@ export function useHandGestures({ enabled = false, videoRef, onCommand } = {}) {
     onCommandRef.current = onCommand
   }, [onCommand])
 
+  // Testing aid: drive the reticle without a hand in front of the camera.
+  // Defined OUTSIDE the tracker effect so it always closes over the live setter;
+  // when it lived inside, a re-run of the effect left it bound to a stale one.
+  useEffect(() => {
+    globalThis.__gestureCursor = (pos, hold = 0) => {
+      setCursorPos(pos)
+      setCursorHold(hold)
+    }
+  }, [])
+
   const send = useCallback((name, arg) => {
     // `cursor` is the fingertip position while pointing. It is not a camera
     // command, so it goes out on its own channel and the HUD draws a reticle
@@ -50,6 +61,8 @@ export function useHandGestures({ enabled = false, videoRef, onCommand } = {}) {
     if (name === 'cursor') {
       cursorRef.current = arg
       setCursorPos(arg)
+      // progress of the select hold, so the reticle can fill up before firing
+      setCursorHold(controllerRef.current?.pinchHeld ?? 0)
       return
     }
     // A QUEUE, not a single slot.
@@ -103,7 +116,9 @@ export function useHandGestures({ enabled = false, videoRef, onCommand } = {}) {
     //   __gesture.push('pan', [0.1, 0])   -> drive the real camera
     //   __gesture.ctrl.lastRaw            -> what the classifier saw
     globalThis.__gesture = {
-      ctrl: controllerRef.current,
+      get ctrl() {
+        return controllerRef.current // live: the ref is reassigned per mount
+      },
       queue: commandQueueRef,
       push: (name, arg) => commandQueueRef.current.push({ name, arg, id: ++commandSeq }),
     }
@@ -149,9 +164,12 @@ export function useHandGestures({ enabled = false, videoRef, onCommand } = {}) {
     return () => {
       tracker.stop()
       trackerRef.current = null
-      commandRef.current = null
+      // Clear the QUEUE, do not null the ref. `commandRef` is an alias for
+      // commandQueueRef (the array itself), so setting .current = null here
+      // destroyed the array on every remount and every later push threw.
+      if (Array.isArray(commandQueueRef.current)) commandQueueRef.current.length = 0
     }
   }, [enabled, videoRef, send])
 
-  return { gesture, error, ready, commandRef, commandQueueRef, controllerRef, debug, setDebug, cursorPos }
+  return { gesture, error, ready, commandQueueRef, controllerRef, debug, setDebug, cursorPos, cursorHold }
 }

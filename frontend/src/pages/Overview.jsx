@@ -7,7 +7,7 @@ import EntityCharts from '../components/EntityCharts.jsx'
 import KpiStrip from '../components/KpiStrip.jsx'
 import { usePolling } from '../hooks/usePolling.js'
 import { Campus3D } from '../campus3d/index.jsx'
-import { GestureHud, GestureToggleButton } from '../gestures/GestureOverlay.jsx'
+import { FingerReticle, GestureHud, GestureToggleButton } from '../gestures/GestureOverlay.jsx'
 import { useHandGestures } from '../gestures/useHandGestures.js'
 
 const EMPTY = { buildingId: null, floorId: null, roomId: null, equipmentId: null }
@@ -79,11 +79,12 @@ export default function Overview() {
     gesture,
     error: gestureError,
     ready: gestureReady,
-    commandRef: gestureCommandRef,
+    commandQueueRef: gestureCommandRef,
     controllerRef: gestureControllerRef,
     debug: gestureDebug,
     setDebug: setGestureDebug,
     cursorPos: gestureCursor,
+    cursorHold: gestureCursorHold,
   } = useHandGestures({ enabled: handControl, videoRef, onCommand: () => {} })
 
   // G turns hand control on/off, so the presenter does not have to find a button
@@ -179,7 +180,6 @@ export default function Overview() {
               controllerRef={gestureControllerRef}
               debug={gestureDebug}
               onDebugToggle={setGestureDebug}
-              cursorPos={gestureCursor}
             />
           )}
         </div>
@@ -207,6 +207,13 @@ export default function Overview() {
           onClose={() => setNewTicket(null)}
           onCreated={() => setNewTicket(null)}
         />
+      )}
+
+      {/* The fingertip pointer lives here, at the page root, so no ancestor can
+          clip it and it can float over the whole window rather than the small
+          webcam panel in the corner of the 3D view. */}
+      {handControl && (
+        <FingerReticle pos={gestureCursor} holdMs={gestureCursorHold} />
       )}
     </div>
   )

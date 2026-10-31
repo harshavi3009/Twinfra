@@ -35,8 +35,8 @@ import * as THREE from 'three'
  */
 const GAIN = {
   rotate: 5.0,   // radians per full-frame palm sweep
-  pan: 2600,     // world units per full-frame palm sweep (campus is ~200 wide)
-  zoom: 2.2,     // fraction of current distance per full-frame size change
+  pan: 1500,     // world units per full-frame palm sweep (campus is ~200 wide)
+  zoom: 7.0,     // fraction of current distance per full-frame size change
 }
 
 /**
@@ -233,21 +233,25 @@ export default function GestureCameraBridge({ commandRef, onPick, buildings = nu
       // `zoomTo` sets the distance relative to the current target and is the
       // call that survives his smoothing.
       // Move the camera directly along the view axis. zoomTo/dolly both get
-      // swallowed by Rishi's smoothTime transition -- the command is applied,
-      // the smoothed state overwrites it before the next render, and the camera
-      // never moves. Setting the position ourselves is the only thing that
-      // sticks, and it composes fine with his rig because he only drives the
-      // camera on selection changes.
-      // camera-controls owns the camera transform and rewrites it from its own
-      // internal spherical state every frame, so writing camera.position is
-      // undone before it renders. The supported way to change distance is
-      // `zoomTo`, but it needs `enableTransition` and a target it knows about.
-      // Calling `dolly` keeps the controls' own state in sync.
-      const step = Math.max(-30, Math.min(30, p.dolly * 0.05))
+      // Rishi's CameraControls rewrites the transform from its own smoothed
+      // state every frame, so writing camera.position directly is undone before
+      // it renders. `dolly()` is the call that keeps the controls' internal
+      // state in sync, so it is the one that actually sticks.
+      //
+      // The step is clamped to a fraction of the current distance rather than a
+      // fixed number of world units: near the campus a 30-unit step is a big
+      // move, far out it is invisible. Clamping to a fraction makes the zoom
+      // feel the same at every distance, and stops a burst of commands from
+      // inverting the camera through its target in one frame.
+      const dist = camera.position.distanceTo(targetOf(controls))
+      // Cap at half the remaining distance so one huge burst cannot flip the
+      // camera through its target, but do not throttle normal moves -- a
+      // proportional gain already keeps the speed consistent at any zoom level.
+      const limit = dist * 0.5
+      const step = Math.max(-limit, Math.min(limit, p.dolly))
       if (typeof controls.dolly === 'function') {
         controls.dolly(step, true)
       } else if (typeof controls.zoomTo === 'function') {
-        const dist = camera.position.distanceTo(targetOf(controls))
         controls.zoomTo(Math.max(12, Math.min(260, dist - step)), true)
       }
       p.dolly = 0

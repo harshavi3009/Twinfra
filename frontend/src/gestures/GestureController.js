@@ -38,6 +38,14 @@ export const TUNING = {
   /** Pan gain: palm delta -> world units. */
   /** Two-hand zoom: ignore distance changes smaller than this ratio. */
   zoomDeadZone: 0.004,
+  /**
+   * A pinch must be HELD this long before it selects. Without it the gesture
+   * fires the instant two fingertips graze each other while you are moving your
+   * hand into position, so you select whatever the cursor happened to be
+   * crossing at that moment. Holding also lets the reticle show you what is
+   * about to be picked.
+   */
+  selectHoldMs: 350,
   /** Exponential smoothing for palm position. 0 = no smoothing, 1 = frozen. */
   smoothing: 0.35,
 }
@@ -98,6 +106,10 @@ export class GestureController {
     this.lastFire = 0
     this.firedForHold = false
     this.pinching = false
+    /** When the current pinch began (seconds), null when not pinching. */
+    this.pinchStart = null
+    /** How long the current pinch has been held, in ms. Drives the HUD ring. */
+    this.pinchHeld = 0
     this.stillSince = null
 
     this.lastGesture = 'none'
@@ -215,18 +227,30 @@ export class GestureController {
       this.send('cursor', null)
     } else if (gesture === 'point' || gesture === 'pinch') {
       const tip = lm[8]
+      // The reticle is sent every frame so the pointer is smooth, and it is how
+      // you see what is about to be selected.
       this.send('cursor', [tip[0], tip[1]])
 
-      if (gesture === 'pinch' && !this.pinching) this.send('select', [tip[0], tip[1]])
-      this.pinching = gesture === 'pinch'
+      if (gesture === 'pinch') {
+        // Hold before firing. `pinchStart` is set on the first pinched frame and
+        // cleared the moment the fingers open again, so a pinch that is already
+        // held when you arrive does not immediately re-fire.
+        if (this.pinchStart === null) this.pinchStart = t
+        if (!this.pinching && t - this.pinchStart >= this.tuning.selectHoldMs / 1000) {
+          this.send('select', [tip[0], tip[1]])
+          this.pinching = true // only once per pinch
+        }
+        this.pinchHeld = (t - this.pinchStart) * 1000 // for the HUD ring
+      } else {
+        this.pinchStart = null
+        this.pinchHeld = 0
+        this.pinching = false
+      }
     }
 
     // remember position only for the gestures that use it
     this.prevPalm = gesture === 'open' || gesture === 'fist' ? this.smoothPalm : null
     if (gesture !== 'thumbs_up') this.prevSize = null
-
-
-    if (gesture !== 'pinch') this.pinching = false
 
     // ---- hold-to-toggle ----
     const toggle = TOGGLE_GESTURES[gesture]
@@ -294,6 +318,8 @@ export class GestureController {
     this.heldSince = 0
     this.firedForHold = false
     this.pinching = false
+    this.pinchStart = null
+    this.pinchHeld = 0
     this.stillSince = null
     this.lastGesture = 'none'
     this.send('cursor', null)
