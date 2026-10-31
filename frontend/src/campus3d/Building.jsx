@@ -4,6 +4,7 @@ import { Html } from '@react-three/drei'
 import * as THREE from 'three'
 import { FLOOR_HEIGHT, PALETTE, SLAB_THICKNESS, floorY, statusColor } from './constants'
 import Floor from './Floor'
+import AlertBeacon from './AlertBeacon'
 import RoomGrid from './RoomGrid'
 
 // Soft radial glow texture, built once and shared by every building's ground halo.
@@ -248,6 +249,7 @@ export default function Building({
       })}
 
       <group ref={labelRef}>
+        {active_alerts > 0 && <AlertBeacon y={5.5} />}
         <Html center distanceFactor={110} zIndexRange={[20, 0]} style={{ pointerEvents: 'none' }}>
           <div
             style={{
