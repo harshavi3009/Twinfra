@@ -11,6 +11,10 @@ export const statusColor = (status) => STATUS_COLORS[status] ?? STATUS_COLORS.of
 
 export const FLOOR_HEIGHT = 4 // metres per floor
 export const SLAB_THICKNESS = 0.35
+export const EXPLODE_GAP = 7 // extra metres between floors when a building is selected
+
+// Base height of a floor group; explode is 0 (stacked) .. 1 (fully exploded).
+export const floorY = (level, explode = 1) => (level - 1) * (FLOOR_HEIGHT + EXPLODE_GAP * explode)
 
 export const PALETTE = {
   bg: '#050810',

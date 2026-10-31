@@ -14,6 +14,28 @@ export function buildPaths(buildings = []) {
   return segs
 }
 
+// Grid cells for n rooms on one floor, laid out by order (no coordinates in the data).
+// Coordinates are local to the building centre; w/d are the room tile size.
+export function roomCells(n, size) {
+  if (!n) return []
+  const innerW = size.w - 3
+  const innerD = size.d - 3
+  const cols = Math.max(1, Math.min(n, Math.round(Math.sqrt((n * innerW) / innerD))))
+  const rows = Math.ceil(n / cols)
+  const cw = innerW / cols
+  const cd = innerD / rows
+  return Array.from({ length: n }, (_, i) => {
+    const c = i % cols
+    const r = Math.floor(i / cols)
+    return {
+      x: -innerW / 2 + cw * (c + 0.5),
+      z: -innerD / 2 + cd * (r + 0.5),
+      w: Math.max(1, cw - 0.8),
+      d: Math.max(1, cd - 0.8),
+    }
+  })
+}
+
 // Distance from point (px, pz) to an axis-aligned segment.
 export function distToSegment(px, pz, s) {
   const minX = Math.min(s.x1, s.x2)

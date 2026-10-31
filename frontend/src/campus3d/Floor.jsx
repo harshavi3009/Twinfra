@@ -7,7 +7,7 @@ const WINDOW_H = 1.8
 const WALL_INSET = 0.2 // body is this much smaller than the slab on each side
 
 const windowGeo = new THREE.PlaneGeometry(WINDOW_W, WINDOW_H)
-const windowMat = new THREE.MeshBasicMaterial({ toneMapped: false })
+const noRaycast = () => null
 const LIT = new THREE.Color(PALETTE.windowLit).multiplyScalar(1.7) // >1 so bloom picks it up
 const OFF = new THREE.Color(PALETTE.windowOff)
 
@@ -35,8 +35,9 @@ function buildWindows(buildingId, level, w, d) {
 }
 
 // One floor = slab + glass body + edge outline + windows (+ roof slab on the top floor).
-// Each floor is its own group at its own height so R2 can explode them apart.
-export default function Floor({ buildingId, level, size, isTop, geos, mats }) {
+// Each floor is its own group at its own height (Building animates it via `ref` to explode them).
+// `solid` = false while the building is open, so clicks pass through to the rooms inside.
+export default function Floor({ ref, buildingId, level, size, isTop, geos, mats, solid = true, children }) {
   const { w, d } = size
   const windowsRef = useRef()
   const wins = useMemo(() => buildWindows(buildingId, level, w, d), [buildingId, level, w, d])
@@ -56,18 +57,35 @@ export default function Floor({ buildingId, level, size, isTop, geos, mats }) {
   }, [wins])
 
   return (
-    <group position-y={(level - 1) * FLOOR_HEIGHT}>
-      <mesh geometry={geos.slab} material={mats.slab} position-y={SLAB_THICKNESS / 2} />
-      <mesh geometry={geos.body} material={mats.body} position-y={SLAB_THICKNESS + bodyH / 2} />
+    <group ref={ref} position-y={(level - 1) * FLOOR_HEIGHT}>
+      <mesh
+        geometry={geos.slab}
+        material={mats.slab}
+        position-y={SLAB_THICKNESS / 2}
+        raycast={solid ? undefined : noRaycast}
+      />
+      <mesh
+        geometry={geos.body}
+        material={mats.body}
+        position-y={SLAB_THICKNESS + bodyH / 2}
+        raycast={solid ? undefined : noRaycast}
+      />
       <lineSegments
         geometry={geos.edges}
         material={mats.edge}
         position-y={SLAB_THICKNESS + bodyH / 2}
+        raycast={noRaycast}
       />
-      <instancedMesh ref={windowsRef} args={[windowGeo, windowMat, wins.length]} />
+      <instancedMesh ref={windowsRef} args={[windowGeo, mats.window, wins.length]} raycast={noRaycast} />
       {isTop && (
-        <mesh geometry={geos.slab} material={mats.slab} position-y={FLOOR_HEIGHT + SLAB_THICKNESS / 2} />
+        <mesh
+          geometry={geos.slab}
+          material={mats.slab}
+          position-y={FLOOR_HEIGHT + SLAB_THICKNESS / 2}
+          raycast={solid ? undefined : noRaycast}
+        />
       )}
+      {children}
     </group>
   )
 }
