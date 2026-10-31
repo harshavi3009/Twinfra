@@ -16,6 +16,7 @@ from datetime import datetime, timedelta
 import pandas as pd
 from sqlalchemy import text
 
+from ..cache import invalidate
 from . import common, detect, predict, tickets as ticket_mod, verify  # noqa: I001
 from . import common
 C = common.C
@@ -37,6 +38,7 @@ def _write_alerts(db, alerts: list[dict]) -> int:
         ), {**alert, "ticket_id": alert.get("ticket_id"),
             "ts": common.now_utc()})
     db.commit()
+    invalidate()
     return len(alerts)
 
 
@@ -60,6 +62,7 @@ def _write_predictions(db, rows: list[dict]) -> int:
         ), {**row, "reasons": json.dumps(row["reasons"]),
             "updated_at": common.now_utc()})
     db.commit()
+    invalidate()
     return len(rows)
 
 
@@ -142,6 +145,7 @@ def clear_alert_state(db, entity_id: str) -> None:
         "UPDATE alerts SET active = false WHERE entity_id = :eid AND active = true"
     ), {"eid": entity_id})
     db.commit()
+    invalidate()
 
 
 # ------------------------------------------------------------------ D4: interventions

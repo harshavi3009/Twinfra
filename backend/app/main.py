@@ -14,6 +14,7 @@ from fastapi.staticfiles import StaticFiles
 
 load_dotenv(Path(__file__).resolve().parent.parent / ".env")
 
+from .cache import CacheMiddleware  # noqa: E402
 from .routers import connections, core, health, readings, technicians, tickets  # noqa: E402
 from .insights import router as insights_router  # noqa: E402
 
@@ -37,6 +38,10 @@ app.add_middleware(
     allow_methods=["*"],
     allow_headers=["*"],
 )
+
+# Response cache for the expensive read paths. Added after CORS so CORS stays
+# outermost (it must add headers to cached responses too). See app/cache.py.
+app.add_middleware(CacheMiddleware, ttl=30.0)
 
 # Technician completion photos: /uploads/xyz.jpg
 app.mount("/uploads", StaticFiles(directory=str(UPLOAD_DIR)), name="uploads")

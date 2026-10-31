@@ -13,7 +13,11 @@ function MetricChart({ entityId, metric }) {
 
   useEffect(() => {
     let alive = true
-    const load = () => getReadings(entityId, metric.key, 24).then((r) => alive && setRes(r)).catch(() => {})
+    // The backend answers 404 when there are no readings; show that instead of a loading skeleton.
+    const load = () =>
+      getReadings(entityId, metric.key, 24)
+        .then((r) => alive && setRes(r))
+        .catch(() => alive && setRes({ points: [], band: null }))
     load()
     const t = setInterval(load, 10000)
     return () => {
@@ -28,7 +32,9 @@ function MetricChart({ entityId, metric }) {
     <div className="rounded-lg border border-line bg-panel p-3">
       <div className="mb-2 text-xs uppercase tracking-wide text-muted">{metric.label}</div>
       <div className="h-44">
-        {res ? (
+        {res && points.length === 0 ? (
+          <div className="flex h-full items-center justify-center text-xs text-muted">No readings in the last 24 h</div>
+        ) : res ? (
           <ResponsiveContainer width="100%" height="100%">
             <ComposedChart data={points}>
               <CartesianGrid stroke="#22304d" strokeDasharray="3 3" />

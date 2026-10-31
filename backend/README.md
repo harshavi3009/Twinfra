@@ -91,6 +91,54 @@ Find your LAN IP: `ipconfig` → *IPv4 Address* (e.g. `192.168.1.42`). Point the
 
 ---
 
+## 3b. How to run the demo (exact order)
+
+This is the start-up order for the demo machine. Each step depends on the one above it, so don't reorder.
+
+```bash
+# 0. one shell, from backend/, venv active, .env filled in
+#    check: python -c "import app.db; print('db config ok')"
+
+# 1. DATABASE - Supabase is already running; nothing to start.
+#    For the local fallback: pg_ctl -D <datadir> -l <log> start
+#    verify: curl localhost:8000/api/health/db  (after step 3)
+
+# 2. TABLES + DATA (idempotent - safe to re-run)
+python -m app.create_tables
+python -m app.seed                 # add --reset for a clean slate on stage
+
+# 3. API
+uvicorn app.main:app --host 0.0.0.0 --port 8000
+#    verify: curl localhost:8000/api/health   -> {"ok": true}
+
+# 4. INSIGHTS (Aditya) - populates alerts + predictions + failure risk
+curl -X POST localhost:8000/api/insights/run
+#    Do this BEFORE the demo, not during it. Until it runs, `predictions` is
+#    empty and the failure-prediction cards are blank.
+
+# 5. SIMULATOR (Aditya) - writes live readings
+#    python -m ml.simulator   (or whatever the current entrypoint is)
+
+# 6. FRONTEND
+cd ../frontend && npm run dev
+#    set VITE_API_URL=http://<LAN-IP>:8000 if demoing from a phone
+```
+
+**Demo-machine checklist**
+
+| Check | How |
+|---|---|
+| DB reachable | `curl localhost:8000/api/health/db` → `"count": 11` |
+| Alerts exist | `curl localhost:8000/api/insights/alerts` → non-empty |
+| Predictions exist | `curl localhost:8000/api/equipment/EQ-0001` → `prediction` not null |
+| Tickets exist | `curl localhost:8000/api/tickets` → non-empty |
+| Phone can reach it | open `http://<LAN-IP>:8000/api/health` on the phone |
+| Fast enough | `curl -w '%{time_total}\n' localhost:8000/api/campus` → well under 0.5s |
+
+**If the API feels slow:** responses are cached for 10 s with stale-while-revalidate (`app/cache.py`), because one Supabase pooler round trip costs 340–1500 ms and `/api/campus` makes four of them. Measured here: **3.8 s cold → 2 ms warm**. The cache is invalidated on every write, so ticket creation still shows up immediately. If you ever need strictly fresh reads, set `STALE_WHILE_REVALIDATE = False` in `app/cache.py`.
+
+---
+
 ## 4. Layout
 
 ```
