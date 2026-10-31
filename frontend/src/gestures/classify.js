@@ -244,7 +244,7 @@ export const GESTURE_LABEL = {
   point: 'Point',
   peace: 'Explode floors',
   three: 'Walkthrough',
-  thumbs_up: 'X-ray',
+  thumbs_up: 'Zoom',
   call: 'Labels',
   zoom: 'Zoom',
   none: 'Show your hand',

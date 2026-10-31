@@ -30,7 +30,10 @@ export function useHandGestures({ enabled = false, videoRef, onCommand } = {}) {
   }, [])
 
   /** Latest command for GestureCameraBridge. `{name, arg}` or null. */
-  const commandRef = useRef(null)
+  /** Queue of unconsumed camera commands; the bridge drains it each frame. */
+  const commandQueueRef = useRef([])
+  let commandSeq = 0
+  const commandRef = commandQueueRef
   const controllerRef = useRef(null)
   const trackerRef = useRef(null)
   const onCommandRef = useRef(onCommand)
@@ -49,7 +52,16 @@ export function useHandGestures({ enabled = false, videoRef, onCommand } = {}) {
       setCursorPos(arg)
       return
     }
-    commandRef.current = { name, arg, at: performance.now() }
+    // A QUEUE, not a single slot.
+    //
+    // The controller can emit two commands on one frame -- a fist sends `pan`
+    // and then `zoom` from the same branch. With one slot the second overwrote
+    // the first before the render loop ever read it, so pan silently vanished
+    // whenever zoom also fired. That is why pan felt slow and zoom felt broken
+    // no matter what the gains were set to.
+    const q = commandQueueRef.current
+    q.push({ name, arg, id: ++commandSeq })
+    if (q.length > 64) q.splice(0, q.length - 64) // never grow unbounded
     onCommandRef.current?.(name, arg)
   }, [])
 
@@ -132,5 +144,5 @@ export function useHandGestures({ enabled = false, videoRef, onCommand } = {}) {
     }
   }, [enabled, videoRef, send])
 
-  return { gesture, error, ready, commandRef, controllerRef, debug, setDebug, cursorPos }
+  return { gesture, error, ready, commandRef, commandQueueRef, controllerRef, debug, setDebug, cursorPos }
 }

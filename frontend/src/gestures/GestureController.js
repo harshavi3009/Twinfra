@@ -197,15 +197,37 @@ export class GestureController {
           (this.smoothPalm[1] - this.prevPalm[1]) * this.tuning.panGain,
         ])
       }
-      // One-hand zoom. Two hands rarely both track at presentation distance, so
-      // a fist also zooms by hand size: push the fist toward the camera and the
-      // campus grows. Hand size is wrist-to-middle-knuckle, which does not
-      // change with finger pose, so it is a clean depth signal.
+      // Zoom shares the fist with pan, but only when the depth change clearly
+      // dominates the sideways movement. Firing both at once made pan feel
+      // sluggish and zoom feel broken: every small push re-dollied the camera
+      // while you were trying to slide the view.
       const size = handSize(lm)
       if (this.prevSize) {
         const ratio = size / this.prevSize
-        if (Math.abs(ratio - 1) > this.tuning.zoomDeadZone * 2) {
+        const lateral = this.prevPalm
+          ? Math.abs(this.smoothPalm[0] - this.prevPalm[0]) +
+            Math.abs(this.smoothPalm[1] - this.prevPalm[1])
+          : 0
+        // only zoom when the hand is growing/shrinking more than it is moving
+        const depth = Math.abs(ratio - 1)
+        // Only zoom when the depth change genuinely dominates sideways motion.
+        // 2x, not 'greater than': a fist sliding across the frame also changes
+        // its apparent size slightly, and that alone was firing zoom.
+        if (depth > this.tuning.zoomDeadZone && depth > lateral * 2) {
           this.send('zoom', 1 / Math.max(0.92, Math.min(1.09, ratio)))
+        }
+      }
+      this.prevSize = size
+      this.send('cursor', null)
+      } else if (gesture === 'thumbs_up') {
+      // Zoom has its OWN gesture. Sharing the fist with pan meant every sideways
+      // move also nudged the dolly, which made pan feel slow and zoom feel
+      // broken. Thumbs up + hand closer/further = zoom, and nothing else.
+      const size = handSize(lm)
+      if (this.prevSize) {
+        const ratio = size / this.prevSize
+        if (Math.abs(ratio - 1) > this.tuning.zoomDeadZone * 3) {
+          this.send('zoom', 1 / Math.max(0.9, Math.min(1.12, ratio)))
         }
       }
       this.prevSize = size
@@ -220,7 +242,8 @@ export class GestureController {
 
     // remember position only for the gestures that use it
     this.prevPalm = gesture === 'open' || gesture === 'fist' ? this.smoothPalm : null
-    if (gesture !== 'fist') this.prevSize = null
+    if (gesture !== 'thumbs_up') this.prevSize = null
+
 
     if (gesture !== 'pinch') this.pinching = false
 

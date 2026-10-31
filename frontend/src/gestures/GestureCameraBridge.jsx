@@ -34,9 +34,9 @@ import * as THREE from 'three'
  * panning appears to do nothing, too high and the campus flies off screen.
  */
 const GAIN = {
-  rotate: 1.1,   // radians per palm delta
-  pan: 260,      // world units per palm delta -- was 90, far too slow to feel
-  zoom: 1.6,     // fraction of current distance per (1 - factor)
+  rotate: 1.4,   // radians per palm delta
+  pan: 420,      // world units per palm delta -- was 90, far too slow to feel
+  zoom: 2.4,     // fraction of current distance per (1 - factor)
 }
 
 export default function GestureCameraBridge({ commandRef, onPick, buildings = null }) {
@@ -44,7 +44,6 @@ export default function GestureCameraBridge({ commandRef, onPick, buildings = nu
 
   const raycaster = useRef(new THREE.Raycaster())
   const ndc = useRef(new THREE.Vector2())
-  const appliedAt = useRef(0)
 
   // Accumulated motion since the last frame. Applied once, then cleared.
   const pending = useRef({ orbit: [0, 0], pan: [0, 0], dolly: 0 })
@@ -113,17 +112,22 @@ export default function GestureCameraBridge({ commandRef, onPick, buildings = nu
   const seen = useRef({ commands: 0, applied: 0, noControls: 0 })
 
   useFrame(() => {
-    const cmd = commandRef?.current
-    if (cmd && cmd.at !== appliedAt.current) seen.current.commands += 1
+    // Drain EVERY command queued since the last frame, not just the newest.
+    //
+    // The old code held one command in a single slot, so when the controller
+    // emitted `pan` and `zoom` from the same fist frame the second overwrote the
+    // first and pan was lost before the render loop saw it. Keeping a queue
+    // means a burst is applied in full and in order.
+    const queue = commandRef?.current
+    const cmds = Array.isArray(queue) ? queue.splice(0, queue.length) : []
+    if (cmds.length) seen.current.commands += cmds.length
     if (!controls) {
-      if (cmd) seen.current.noControls += 1
+      if (cmds.length) seen.current.noControls += cmds.length
       return
     }
 
-    // ---- 1. accumulate any new command (never drop one) ----
-    if (cmd && cmd.at !== appliedAt.current) {
-      appliedAt.current = cmd.at
-
+    // ---- 1. accumulate every new command (never drop one) ----
+    for (const cmd of cmds) {
       if (cmd.name === 'orbit') {
         pending.current.orbit[0] += cmd.arg[0]
         pending.current.orbit[1] += cmd.arg[1]
