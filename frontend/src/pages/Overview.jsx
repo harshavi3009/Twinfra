@@ -1,6 +1,6 @@
 import { useEffect, useState } from 'react'
 import { useLocation } from 'react-router-dom'
-import { getAlerts, getBuilding, getCampus, getEquipment, getImpact, getRoom } from '../api/client.js'
+import { getAlerts, getBuilding, getCampus, getConnections, getEquipment, getImpact, getRoom } from '../api/client.js'
 import CreateTicketModal from '../components/CreateTicketModal.jsx'
 import DrillDownPanel from '../components/DrillDownPanel.jsx'
 import EntityCharts from '../components/EntityCharts.jsx'
@@ -19,9 +19,12 @@ const impactNodeFor = (sel) => {
 export default function Overview() {
   const { data: campus, error } = usePolling(getCampus)
   const { data: alerts } = usePolling(() => getAlerts(true))
+  const { data: connections } = usePolling(getConnections)
   const location = useLocation()
   // Selection state lives here; the 3D view and the right panel both use it.
   const [selection, setSelection] = useState(EMPTY)
+  // 3D day/night toggle.
+  const [timeOfDay, setTimeOfDay] = useState('day')
   // Set when "Create ticket" is clicked on an asset card; the form opens prefilled with that equipment.
   const [newTicket, setNewTicket] = useState(null)
   // Result of "What if this fails?" for the selected node.
@@ -93,8 +96,18 @@ export default function Overview() {
             </span>
           )}
           {impactError && <span className="text-critical">{impactError}</span>}
+          {!impact && !impactError && (
+            <span className="text-muted">Click the substation or water tank on the map to show its lines.</span>
+          )}
         </div>
         <div className="flex gap-2">
+          <button
+            type="button"
+            onClick={() => setTimeOfDay((t) => (t === 'day' ? 'night' : 'day'))}
+            className="rounded border border-line px-3 py-1 text-muted hover:text-text"
+          >
+            {timeOfDay === 'day' ? 'Day (click for night)' : 'Night (click for day)'}
+          </button>
           {impact && (
             <button type="button" onClick={() => setImpact(null)} className="rounded border border-line px-3 py-1 text-muted hover:text-text">
               Clear
@@ -116,7 +129,9 @@ export default function Overview() {
             onSelect={select}
             buildingDetail={buildingDetail}
             roomDetail={roomDetail}
+            connections={connections}
             highlightIds={impact?.affected?.ids ?? []}
+            timeOfDay={timeOfDay}
           />
         </div>
         <aside className="w-96 shrink-0 overflow-auto">

@@ -95,18 +95,30 @@ function WaterTank() {
 }
 
 // Substation (electricity) or water tank, chosen by the `type` from /api/campus utilities.
-export default function UtilityNode({ data, labelDelay = 0 }) {
+// Click to show its pipes/lines (onPick); `active` marks the one whose lines are showing.
+export default function UtilityNode({ data, labelDelay = 0, active = false, onPick }) {
   const { type, position } = data
   const isWater = /tank|water/i.test(type ?? '')
   const label = isWater ? 'Water tank' : 'Substation'
   // Same one-at-a-time label mounting as Building (see useDelayedReady).
   const labelReady = useDelayedReady(labelDelay)
   return (
-    <group position={[position.x, 0, position.z]}>
+    <group
+      position={[position.x, 0, position.z]}
+      onPointerOver={() => (document.body.style.cursor = 'pointer')}
+      onPointerOut={() => (document.body.style.cursor = '')}
+      onClick={(e) => {
+        if (e.delta > 6) return
+        e.stopPropagation()
+        onPick?.()
+      }}
+    >
       {isWater ? <WaterTank /> : <Substation />}
       {labelReady && (
       <Html position={[0, isWater ? 10 : 6.5, 0]} center distanceFactor={110} zIndexRange={[20, 0]}>
-        <div style={tagStyle}>{isWater ? '💧' : '⚡'} {label}</div>
+        <div style={{ ...tagStyle, border: `1px solid ${active ? (isWater ? PALETTE.water : PALETTE.electric) : tagStyle.border}` }}>
+          {isWater ? '💧' : '⚡'} {label} {active ? '· lines on' : ''}
+        </div>
       </Html>
       )}
     </group>

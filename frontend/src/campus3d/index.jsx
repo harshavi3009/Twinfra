@@ -1,10 +1,11 @@
-import { useEffect, useMemo, useRef } from 'react'
+import { useEffect, useMemo, useRef, useState } from 'react'
 import { Canvas } from '@react-three/fiber'
 import { PALETTE } from './constants'
 import Ground from './Ground'
 import Trees from './Trees'
 import Building from './Building'
 import UtilityNode from './UtilityNode'
+import FlowLines from './FlowLines'
 import Effects from './Effects'
 import CameraRig from './CameraRig'
 import DayNight from './DayNight'
@@ -12,6 +13,9 @@ import { useSelection } from './useSelection'
 
 const EMPTY = []
 const DOUBLE_CLICK_MS = 350
+
+// 'water' for the water tank, otherwise 'electricity' (the substation).
+const utilityKind = (u) => (/tank|water/i.test(u.type ?? '') ? 'water' : 'electricity')
 
 const simTag = {
   position: 'absolute',
@@ -45,7 +49,8 @@ const backBtn = {
  * Click a building -> floors explode + room heatmap -> click a room -> equipment -> click equipment.
  * `roomDetail` (GET /api/rooms/{id}) is an optional extra prop: it gives the selected room's
  * equipment list so markers are typed and clickable. Without it, generic markers are drawn.
- * R3 props connections and highlightIds are accepted but not used yet.
+ * `connections` + clicking a utility (substation = electric lines, water tank = pipes) shows its flow lines.
+ * `highlightIds` (impact analysis): affected rooms flash, and lines into affected buildings turn red.
  * `whatIf` (per_building from /api/insights/whatif) recolours buildings to their simulated state.
  * `timeOfDay` = 'day' | 'night': night darkens the sky and lights, and makes lit windows glow.
  */
@@ -55,9 +60,7 @@ export function Campus3D({
   selection: selectionProp = null,
   onSelect,
   roomDetail = null,
-  // eslint-disable-next-line no-unused-vars
   connections = null,
-  // eslint-disable-next-line no-unused-vars
   highlightIds = EMPTY,
   whatIf = null,
   timeOfDay = 'day',
@@ -66,6 +69,10 @@ export function Campus3D({
   const utilities = campus?.utilities ?? EMPTY
   const night = timeOfDay === 'night'
   const { selection, select, back, reset } = useSelection(selectionProp, onSelect)
+
+  // Which utility's lines are showing: 'electricity', 'water', or null. Click the same node again to hide.
+  const [flowUtility, setFlowUtility] = useState(null)
+  const toggleFlow = (kind) => setFlowUtility((cur) => (cur === kind ? null : kind))
 
   // whatIf rows keyed by building id, so each Building can look up its simulated state.
   const simById = useMemo(() => new Map((whatIf ?? EMPTY).map((row) => [row.id, row])), [whatIf])
@@ -109,7 +116,7 @@ export function Campus3D({
       >
         <DayNight night={night} />
 
-        <Ground buildings={buildings} />
+        <Ground buildings={buildings} night={night} />
         <Trees buildings={buildings} utilities={utilities} />
         {buildings.map((b, i) => {
           const selected = b.id === selection.buildingId
@@ -126,12 +133,29 @@ export function Campus3D({
               labelDelay={(i + 1) * 150}
               sim={simById.get(b.id) ?? null}
               night={night}
+              highlightIds={highlightIds}
             />
           )
         })}
-        {utilities.map((u, i) => (
-          <UtilityNode key={u.id} data={u} labelDelay={(buildings.length + i + 1) * 150} />
-        ))}
+        {utilities.map((u, i) => {
+          const kind = utilityKind(u)
+          return (
+            <UtilityNode
+              key={u.id}
+              data={u}
+              labelDelay={(buildings.length + i + 1) * 150}
+              active={flowUtility === kind}
+              onPick={() => toggleFlow(kind)}
+            />
+          )
+        })}
+        <FlowLines
+          connections={connections}
+          buildings={buildings}
+          utilities={utilities}
+          utility={flowUtility}
+          highlightIds={highlightIds}
+        />
 
         <CameraRig
           buildings={buildings}
@@ -139,7 +163,7 @@ export function Campus3D({
           selection={selection}
           overviewTarget={overviewTarget}
         />
-        <Effects />
+        <Effects night={night} />
       </Canvas>
 
       {whatIf && <div style={simTag}>SIMULATED</div>}

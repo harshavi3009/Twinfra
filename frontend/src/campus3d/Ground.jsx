@@ -1,19 +1,27 @@
-import { useMemo } from 'react'
+import { useMemo, useRef } from 'react'
+import { useFrame } from '@react-three/fiber'
 import { Grid } from '@react-three/drei'
 import { PALETTE } from './constants'
 import { HUB, buildPaths } from './layout'
+import { dayNightColors, useNightAmount } from './DayNight'
 
 const PATH_WIDTH = 2.4
 
-// Dark ground disc, faint grid, glowing paths between buildings and a central plaza.
-export default function Ground({ buildings }) {
+// Ground disc, faint grid, glowing paths between buildings and a central plaza.
+// The disc is dark at night and lighter in day (see dayNightColors).
+export default function Ground({ buildings, night = false }) {
   const paths = useMemo(() => buildPaths(buildings), [buildings])
+  const groundMat = useRef()
+  const amount = useNightAmount(night)
+  useFrame(() => {
+    groundMat.current.color.lerpColors(dayNightColors.ground.day, dayNightColors.ground.night, amount.current)
+  })
 
   return (
     <group>
       <mesh rotation-x={-Math.PI / 2} position-y={-0.02}>
         <circleGeometry args={[150, 64]} />
-        <meshStandardMaterial color={PALETTE.ground} roughness={1} metalness={0} />
+        <meshStandardMaterial ref={groundMat} roughness={1} metalness={0} />
       </mesh>
 
       <Grid

@@ -7,6 +7,7 @@ import Floor from './Floor'
 import AlertBeacon from './AlertBeacon'
 import { useDelayedReady } from './useDelayedReady'
 import RoomGrid from './RoomGrid'
+import { dayNightColors, useNightAmount } from './DayNight'
 
 // Soft radial glow texture, built once and shared by every building's ground halo.
 let glowTexture
@@ -82,6 +83,7 @@ export default function Building({
   labelDelay = 0, // ms before this building's label mounts (see index.jsx)
   sim = null, // one whatIf row ({ status_after, power_kw_after }) when a what-if is shown
   night = false, // night makes the lit windows glow brighter
+  highlightIds = null, // impact analysis: room ids to flash (see RoomGrid)
 }) {
   const { id, name, floors, position, size, active_alerts } = data
   // Simulated values replace the live ones while a what-if is shown; the colour lerp animates the change.
@@ -155,7 +157,7 @@ export default function Building({
   const hoverRef = useRef(0) // 0..1 eased
   const hoverWanted = useRef(false)
   const explode = useRef(0) // 0 stacked .. 1 exploded
-  const nightAmt = useRef(0) // 0 day .. 1 night, eased
+  const nightAmount = useNightAmount(night) // 0 day .. 1 night, eased
   const floorRefs = useRef([])
   const labelRef = useRef()
   const critical = status === 'critical'
@@ -173,8 +175,18 @@ export default function Building({
     const pulse = critical ? 0.5 + 0.5 * Math.sin(clock.elapsedTime * 4) : 0
     applyLook(mats, current.current, pulse, l, hoverRef.current)
 
-    nightAmt.current += ((night ? 1 : 0) - nightAmt.current) * k
-    mats.window.color.setScalar(1 + nightAmt.current * 0.8) // multiplies the per-window colour
+    const n = nightAmount.current
+    // The status halo is additive light, which vanishes on a bright sky. In day it is drawn normally and stronger.
+    const day = n < 0.5
+    const blending = day ? THREE.NormalBlending : THREE.AdditiveBlending
+    if (mats.glow.blending !== blending) {
+      mats.glow.blending = blending
+      mats.glow.needsUpdate = true
+    }
+    if (day) mats.glow.opacity = Math.min(1, mats.glow.opacity * 2.2)
+    mats.window.color.setScalar(1 + n * 2.5) // multiplies the per-window colour, so lit windows glow at night
+    mats.body.color.lerpColors(dayNightColors.body.day, dayNightColors.body.night, n)
+    mats.slab.color.lerpColors(dayNightColors.slab.day, dayNightColors.slab.night, n)
 
     // explode / collapse floors
     explode.current += ((selected ? 1 : 0) - explode.current) * (1 - Math.exp(-dt * 3.5))
@@ -256,6 +268,7 @@ export default function Building({
                 roomDetail={roomDetail}
                 selectedEquipmentId={selection.equipmentId}
                 onPickEquipment={pickEquipment}
+                highlightIds={highlightIds}
               />
             )}
           </Floor>
