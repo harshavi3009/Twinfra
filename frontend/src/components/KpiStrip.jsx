@@ -1,14 +1,28 @@
 const inr = (n) => `₹${Math.round(n).toLocaleString('en-IN')}`
 
-function Kpi({ label, value, unit, sub, tone = 'text-text' }) {
+// Each card gets its own colour pair (start -> end of the gradient), like the dashboard reference.
+const GRADIENTS = {
+  violet: ['#7c5cff', '#a06bff'],
+  green: ['#16a34a', '#34d399'],
+  blue: ['#2563eb', '#60a5fa'],
+  pink: ['#db2777', '#f472b6'],
+  orange: ['#ea580c', '#fb923c'],
+  red: ['#dc2626', '#f87171'],
+}
+
+function Kpi({ label, value, unit, sub, color }) {
+  const [from, to] = GRADIENTS[color]
   return (
-    <div className="rounded-lg border border-line bg-panel p-4">
-      <div className="text-xs uppercase tracking-wide text-muted">{label}</div>
-      <div className={`mt-1 font-mono text-2xl font-medium ${tone}`}>
+    <div
+      className="rounded-lg p-4 text-white shadow-lg"
+      style={{ background: `linear-gradient(135deg, ${from}, ${to})` }}
+    >
+      <div className="text-xs uppercase tracking-wide text-white/80">{label}</div>
+      <div className="mt-1 font-mono text-2xl font-medium">
         {value}
-        {unit && <span className="ml-1 text-sm text-muted">{unit}</span>}
+        {unit && <span className="ml-1 text-sm text-white/80">{unit}</span>}
       </div>
-      {sub && <div className="mt-0.5 text-xs text-muted">{sub}</div>}
+      {sub && <div className="mt-0.5 text-xs text-white/80">{sub}</div>}
     </div>
   )
 }
@@ -22,14 +36,14 @@ export default function KpiStrip({ totals, alerts }) {
         label="Power now"
         value={totals.power_kw}
         unit="kW"
-        tone={over > 0 ? 'text-critical' : 'text-ok'}
+        color="violet"
         sub={`${over > 0 ? '↑' : '↓'} ${Math.abs(over).toFixed(1)}% vs baseline ${totals.baseline_kw} kW`}
       />
-      <Kpi label="Water" value={totals.water_lpm} unit="L/min" />
-      <Kpi label="Occupancy" value={totals.occupancy.toLocaleString('en-IN')} />
-      <Kpi label="Active alerts" value={totals.active_alerts} tone={totals.active_alerts ? 'text-warning' : 'text-ok'} />
-      <Kpi label="Open tickets" value={totals.open_tickets} />
-      <Kpi label="₹ wasted / month (est.)" value={inr(wasted)} tone="text-critical" sub="Sum of active alerts" />
+      <Kpi label="Water" value={totals.water_lpm} unit="L/min" color="blue" />
+      <Kpi label="Occupancy" value={totals.occupancy.toLocaleString('en-IN')} color="green" />
+      <Kpi label="Active alerts" value={totals.active_alerts} color="pink" />
+      <Kpi label="Open tickets" value={totals.open_tickets} color="orange" />
+      <Kpi label="₹ wasted / month (est.)" value={inr(wasted)} color="red" sub="Sum of active alerts" />
     </div>
   )
 }
