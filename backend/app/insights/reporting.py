@@ -126,7 +126,11 @@ def get_alerts(db, active: bool = True) -> list[dict]:
             "severity": row[7], "explanation": row[8],
             "est_cost_inr_month": row[9], "active": row[10],
             "ticket_id": row[11],
-            "created_at": str(row[12]) if row[12] else None,
+            # both spellings: AlertCard reads alert.ts, my D3 code used created_at
+            "ts": row[12].isoformat() if hasattr(row[12], "isoformat") else (
+                str(row[12]) if row[12] else None),
+            "created_at": row[12].isoformat() if hasattr(row[12], "isoformat") else (
+                str(row[12]) if row[12] else None),
         }
         for row in rows
     ]
