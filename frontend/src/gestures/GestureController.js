@@ -14,19 +14,19 @@
 
 import {
   classify,
+  handSize,
   palmCenter,
   twoHandDistance,
   mirror,
   fingerScores,
-  extendedFingers,
 } from './classify.js'
 
 // ---- tuning (all in one place so it can be explained and adjusted) ----
 export const TUNING = {
   /** Frames a gesture must persist before it counts. At 15 fps, 3 ≈ 200 ms. */
-  stableFrames: 3,
+  stableFrames: 2,
   /** Frames of landmarks to average before classifying; damps sensor jitter. */
-  smoothFrames: 12,
+  smoothFrames: 6,
   /** Seconds a toggle gesture must be held before it fires. */
   holdSeconds: 0.8,
   /** Seconds after a toggle before it can fire again. */
@@ -38,9 +38,9 @@ export const TUNING = {
   /** Pan gain: palm delta -> world units. */
   panGain: 1.2,
   /** Two-hand zoom: ignore distance changes smaller than this ratio. */
-  zoomDeadZone: 0.015,
+  zoomDeadZone: 0.006,
   /** Exponential smoothing for palm position. 0 = no smoothing, 1 = frozen. */
-  smoothing: 0.45,
+  smoothing: 0.55,
 }
 
 /** Gestures that fire once when held, rather than continuously. */
@@ -88,6 +88,7 @@ export class GestureController {
 
     this.prevPalm = null // last smoothed palm centre (rotate / pan)
     this.prevTwo = null // last two-hand distance (zoom)
+    this.prevSize = null // last one-hand size (fist zoom)
     this.smoothPalm = null // exponential moving average
 
     this.candidate = null // gesture we are waiting to see repeatedly
@@ -160,8 +161,7 @@ export class GestureController {
     if (this.frameBuf.length > this.tuning.smoothFrames) this.frameBuf.shift()
     const lm = this.frameBuf.length > 1 ? averageFrames(this.frameBuf) : mirrored[0]
 
-    const raw = classify(lm, this.lastUp)
-    this.lastUp = extendedFingers(lm, this.lastUp)
+    const raw = classify(lm)
     this.lastRaw = raw
     this.lastRatios = fingerScores(lm)
     // Coming back from two-hand zoom, the last gesture was "zoom"; seed the
@@ -197,16 +197,31 @@ export class GestureController {
           (this.smoothPalm[1] - this.prevPalm[1]) * this.tuning.panGain,
         ])
       }
+      // One-hand zoom. Two hands rarely both track at presentation distance, so
+      // a fist also zooms by hand size: push the fist toward the camera and the
+      // campus grows. Hand size is wrist-to-middle-knuckle, which does not
+      // change with finger pose, so it is a clean depth signal.
+      const size = handSize(lm)
+      if (this.prevSize) {
+        const ratio = size / this.prevSize
+        if (Math.abs(ratio - 1) > this.tuning.zoomDeadZone * 2) {
+          this.send('zoom', 1 / Math.max(0.92, Math.min(1.09, ratio)))
+        }
+      }
+      this.prevSize = size
       this.send('cursor', null)
     } else if (gesture === 'point' || gesture === 'pinch') {
       const tip = lm[8]
       this.send('cursor', [tip[0], tip[1]])
+
       if (gesture === 'pinch' && !this.pinching) this.send('select', [tip[0], tip[1]])
       this.pinching = gesture === 'pinch'
     }
 
     // remember position only for the gestures that use it
     this.prevPalm = gesture === 'open' || gesture === 'fist' ? this.smoothPalm : null
+    if (gesture !== 'fist') this.prevSize = null
+
     if (gesture !== 'pinch') this.pinching = false
 
     // ---- hold-to-toggle ----

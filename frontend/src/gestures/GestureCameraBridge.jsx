@@ -34,9 +34,9 @@ import * as THREE from 'three'
  * panning appears to do nothing, too high and the campus flies off screen.
  */
 const GAIN = {
-  rotate: 0.6,   // radians per palm delta
-  pan: 90,       // world units per palm delta
-  zoom: 0.6,     // fraction of current distance per (1 - factor)
+  rotate: 1.1,   // radians per palm delta
+  pan: 260,      // world units per palm delta -- was 90, far too slow to feel
+  zoom: 1.6,     // fraction of current distance per (1 - factor)
 }
 
 export default function GestureCameraBridge({ commandRef, onPick, buildings = null }) {
