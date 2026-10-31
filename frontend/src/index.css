@@ -1,0 +1,39 @@
+@import "tailwindcss";
+
+/* Design tokens: dark "campus control room". Use as bg-bg, text-accent, border-line, etc. */
+@theme {
+  --color-bg: #0b1220;
+  --color-panel: #111a2e;
+  --color-panel-2: #16223b;
+  --color-line: #22304d;
+  --color-text: #e6edf7;
+  --color-muted: #8ea0bd;
+  --color-accent: #22d3ee;
+  --color-ok: #22c55e;
+  --color-warning: #f59e0b;
+  --color-critical: #ef4444;
+  --color-offline: #64748b;
+  --font-sans: "Space Grotesk", system-ui, sans-serif;
+  --font-mono: "JetBrains Mono", ui-monospace, monospace;
+}
+
+html,
+body,
+#root {
+  height: 100%;
+}
+
+body {
+  margin: 0;
+  background: var(--color-bg);
+  color: var(--color-text);
+  font-family: var(--font-sans);
+}
+
+@keyframes live-pulse {
+  0%, 100% { opacity: 1; }
+  50% { opacity: 0.35; }
+}
+.live-dot {
+  animation: live-pulse 1.6s ease-in-out infinite;
+}
