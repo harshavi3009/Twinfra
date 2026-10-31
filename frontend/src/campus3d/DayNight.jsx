@@ -3,7 +3,8 @@ import { useFrame } from '@react-three/fiber'
 import * as THREE from 'three'
 
 // Sky, fog and lights for day and night. The change is eased over about a second.
-const DAY = { bg: '#050810', ambient: 0.55, hemi: 0.5, sun: 0.9 }
+// Day sky is a mid blue, kept below the bloom threshold so it doesn't haze the scene.
+const DAY = { bg: '#3d5f8c', ambient: 1.0, hemi: 1.1, sun: 1.5 }
 const NIGHT = { bg: '#000104', ambient: 0.04, hemi: 0.03, sun: 0.03 }
 
 const DAY_BG = new THREE.Color(DAY.bg)

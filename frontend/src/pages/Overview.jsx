@@ -76,7 +76,7 @@ export default function Overview() {
           className="rounded border px-3 py-1"
           onClick={() => setTimeOfDay((t) => (t === 'day' ? 'night' : 'day'))}
         >
-          {timeOfDay === 'day' ? 'Night view' : 'Day view'}
+          {timeOfDay === 'day' ? 'Day (click for night)' : 'Night (click for day)'}
         </button>
         {impactNote && <span className="text-critical">{impactNote}</span>}
         <span className="text-muted">Click the substation or water tank on the map to show its lines.</span>
