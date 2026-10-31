@@ -232,48 +232,86 @@ WHATIF_LIBRARY: dict[str, dict] = {
 }
 
 
-def whatif(db, action: str, entity_id: str | None = None) -> dict:
-    """'If we did X, what would change?' — answers for the 3D map to recolour."""
-    spec = WHATIF_LIBRARY.get(action)
-    if spec is None:
-        raise ValueError(
-            f"unknown action '{action}'; try one of {sorted(WHATIF_LIBRARY)}")
+def whatif(db, actions, entity_id: str | None = None) -> dict:
+    """'If we did X, what would change?' — answers for the 3D map to recolour.
+
+    `actions` is one key or a list. Several actions compound (each one shaves a
+    percentage off what is left), which is why stacking four of them cannot take
+    the bill below zero.
+
+    The response carries both key spellings (`projected`/`scenario`,
+    `saving`/`savings`, `by_building`/`per_building`) so the frontend keeps
+    working while we settle on one.
+    """
+    if isinstance(actions, str):
+        actions = [actions]
+    actions = list(dict.fromkeys(actions or []))
+    if not actions:
+        raise ValueError("no actions given")
+
+    specs = []
+    for action in actions:
+        spec = WHATIF_LIBRARY.get(action)
+        if spec is None:
+            raise ValueError(
+                f"unknown action '{action}'; try one of {sorted(WHATIF_LIBRARY)}")
+        specs.append((action, spec))
 
     base = sustainability(db, days=30)
-    extra_kwh = _ghost_kwh_month(db) if spec["target"] == "ghost" else 0.0
-    if spec["target"] == "lighting":
-        extra_kwh = _lighting_kwh_month(db)
+
+    # ghost loads are currently wasted on top of the metered total, so they
+    # widen the baseline before a percentage is taken off it
+    extra_kwh = 0.0
+    for _, spec in specs:
+        if spec["target"] == "ghost":
+            extra_kwh += _ghost_kwh_month(db)
+        elif spec["target"] == "lighting":
+            extra_kwh = max(extra_kwh, _lighting_kwh_month(db))
 
     base_kwh = float(base["kwh"] or 0.0) + extra_kwh
-    saved_kwh = base_kwh * spec["reduction"]
+
+    remaining = 1.0
+    for _, spec in specs:
+        remaining *= (1.0 - spec["reduction"])
+    saved_kwh = base_kwh * (1.0 - remaining)
 
     by_building = {}
     for row in base["by_building"]:
-        share = spec["reduction"]
-        by_building[row["building_id"]] = round(
-            float(row["kwh"]) * (1 - share), 1)
+        by_building[row["building_id"]] = round(float(row["kwh"]) * remaining, 1)
+
+    baseline = {
+        "kwh": round(base_kwh, 1),
+        "cost_inr": int(base_kwh * C.TARIFF_INR_PER_KWH),
+        "co2_kg": round(common.kwh_to_co2(base_kwh), 1),
+    }
+    projected = {
+        "kwh": round(base_kwh - saved_kwh, 1),
+        "cost_inr": int((base_kwh - saved_kwh) * C.TARIFF_INR_PER_KWH),
+        "co2_kg": round(common.kwh_to_co2(base_kwh - saved_kwh), 1),
+    }
+    saving = {
+        "kwh_month": round(saved_kwh, 1),
+        "inr_month": int(saved_kwh * C.TARIFF_INR_PER_KWH),
+        "co2_kg_month": round(common.kwh_to_co2(saved_kwh), 1),
+        "pct": round((1.0 - remaining) * 100, 1),
+    }
 
     return {
-        "action": action,
-        "label": spec["label"],
+        "action": actions[0] if len(actions) == 1 else "combined",
+        "actions": actions,
+        "labels": [spec["label"] for _, spec in specs],
+        "label": " + ".join(spec["label"] for _, spec in specs),
         "entity_id": entity_id or "campus",
-        "baseline": {
-            "kwh": round(base_kwh, 1),
-            "cost_inr": int(base_kwh * C.TARIFF_INR_PER_KWH),
-            "co2_kg": round(common.kwh_to_co2(base_kwh), 1),
-        },
-        "projected": {
-            "kwh": round(base_kwh - saved_kwh, 1),
-            "cost_inr": int((base_kwh - saved_kwh) * C.TARIFF_INR_PER_KWH),
-            "co2_kg": round(common.kwh_to_co2(base_kwh - saved_kwh), 1),
-        },
-        "saving": {
-            "kwh_month": round(saved_kwh, 1),
-            "inr_month": int(saved_kwh * C.TARIFF_INR_PER_KWH),
-            "co2_kg_month": round(common.kwh_to_co2(saved_kwh), 1),
-            "pct": round(spec["reduction"] * 100, 1),
-        },
+        "baseline": baseline,
+        # both spellings until the frontend settles on one
+        "projected": projected,
+        "scenario": projected,
+        "saving": saving,
+        "savings": saving,
         "by_building": by_building,
+        "per_building": [
+            {"building_id": b, "kwh": v} for b, v in sorted(by_building.items())
+        ],
     }
 
 
