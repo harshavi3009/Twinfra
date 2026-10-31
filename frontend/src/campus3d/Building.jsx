@@ -81,6 +81,7 @@ export default function Building({
   onSelect,
   labelDelay = 0, // ms before this building's label mounts (see index.jsx)
   sim = null, // one whatIf row ({ status_after, power_kw_after }) when a what-if is shown
+  night = false, // night makes the lit windows glow brighter
 }) {
   const { id, name, floors, position, size, active_alerts } = data
   // Simulated values replace the live ones while a what-if is shown; the colour lerp animates the change.
@@ -154,6 +155,7 @@ export default function Building({
   const hoverRef = useRef(0) // 0..1 eased
   const hoverWanted = useRef(false)
   const explode = useRef(0) // 0 stacked .. 1 exploded
+  const nightAmt = useRef(0) // 0 day .. 1 night, eased
   const floorRefs = useRef([])
   const labelRef = useRef()
   const critical = status === 'critical'
@@ -170,6 +172,9 @@ export default function Building({
 
     const pulse = critical ? 0.5 + 0.5 * Math.sin(clock.elapsedTime * 4) : 0
     applyLook(mats, current.current, pulse, l, hoverRef.current)
+
+    nightAmt.current += ((night ? 1 : 0) - nightAmt.current) * k
+    mats.window.color.setScalar(1 + nightAmt.current * 0.8) // multiplies the per-window colour
 
     // explode / collapse floors
     explode.current += ((selected ? 1 : 0) - explode.current) * (1 - Math.exp(-dt * 3.5))
