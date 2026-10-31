@@ -77,6 +77,8 @@ export class GestureController {
    */
   update(hands) {
     const t = this.now()
+    // Mirror once, here: everything below (palm deltas, pinch points) is then in
+    // screen space, which is what the camera bridge expects.
     const mirrored = (hands || []).map(mirror)
 
     if (mirrored.length === 0) {

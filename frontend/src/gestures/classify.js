@@ -57,8 +57,10 @@ export const TOLERANCE = {
 export const distance = (a, b) => Math.hypot(a[0] - b[0], a[1] - b[1])
 
 /**
- * Landmarks arrive from a mirrored webcam, so x already runs the same way as
- * your hand. We keep the flip explicit so the intent is obvious.
+ * MediaPipe reports x in raw camera space, so the image is mirrored relative to
+ * the person looking at it. Flipping x here makes "move hand right" mean "move
+ * model right" instead of left. Applied ONCE, at the top of GestureController,
+ * so every downstream delta is already in screen space.
  */
 export function mirror(landmarks) {
   return landmarks.map(([x, y]) => [1 - x, y])

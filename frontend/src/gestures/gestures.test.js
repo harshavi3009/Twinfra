@@ -253,3 +253,44 @@ test('tuning values are sane', () => {
   assert.ok(TUNING.cooldownSeconds > TUNING.holdSeconds, 'cooldown must outlast the hold')
   assert.ok(TUNING.deadZone > 0, 'no dead zone means camera shake')
 })
+
+// ---------------------------------------------------------------- accumulation
+
+test('bursty commands are not dropped when frames are slow', () => {
+  // Regression: the bridge used to mark a command "applied" before throttling,
+  // so when many commands arrived faster than frames rendered, the extras were
+  // thrown away. Orbit fired every frame and hid the bug; pan and zoom -- which
+  // arrive in bursts -- silently did nothing. Commands must accumulate instead.
+  const h = harness({ stableFrames: 1 })
+  const before = h.sent.filter((s) => s.name === 'pan').length
+  for (let i = 0; i < 12; i += 1) {
+    h.push([makeHand({ open: 0, cx: 0.35 + i * 0.03 })])
+  }
+  const pans = h.sent.filter((s) => s.name === 'pan').length - before
+  assert.ok(pans >= 8, `expected most of the 12 pan frames to emit, got ${pans}`)
+})
+
+test('pan deltas follow the hand after mirroring', () => {
+  // MediaPipe x is raw camera space; GestureController mirrors it once so that
+  // moving your hand right moves the model right. In camera space that means
+  // DECREASING x, so this asserts the mirror actually happened.
+  const h = harness({ stableFrames: 1 })
+  for (let i = 0; i < 8; i += 1) h.push([makeHand({ open: 0, cx: 0.7 - i * 0.04 })])
+  const pan = h.sent.find((s) => s.name === 'pan')
+  assert.ok(pan, 'expected a pan command')
+  assert.ok(pan.arg[0] > 0, `hand moving right should give positive dx, got ${pan.arg[0]}`)
+})
+
+test('zoom emits repeatedly while the hands keep moving', () => {
+  const h = harness({ stableFrames: 1 })
+  h.push([makeHand({ open: 4, cx: 0.35 }), makeHand({ open: 4, cx: 0.65 })])
+  for (let i = 1; i <= 6; i += 1) {
+    h.push([
+      makeHand({ open: 4, cx: 0.35 - i * 0.03 }),
+      makeHand({ open: 4, cx: 0.65 + i * 0.03 }),
+    ])
+  }
+  const zooms = h.sent.filter((s) => s.name === 'zoom')
+  assert.ok(zooms.length >= 3, `expected several zoom commands, got ${zooms.length}`)
+  for (const z of zooms) assert.ok(z.arg < 1, 'hands apart must zoom in')
+})
