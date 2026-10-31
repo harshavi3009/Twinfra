@@ -1,7 +1,7 @@
 const inr = (n) => `₹${Math.round(n).toLocaleString('en-IN')}`
 
-// All KPI cards use the 5th tone of the blue palette (#1b3554) with white text.
-const CARD_COLOR = '#1b3554'
+// All KPI cards use the darkest tone of the blue palette (#000f22) with white text.
+const CARD_COLOR = '#000f22'
 
 function Kpi({ label, value, unit, sub, neon }) {
   return (
