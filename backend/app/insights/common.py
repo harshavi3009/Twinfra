@@ -17,7 +17,7 @@ _ML_DIR = Path(__file__).resolve().parents[3] / "ml"
 if str(_ML_DIR) not in sys.path:
     sys.path.insert(0, str(_ML_DIR))
 
-import config as C  # noqa: E402
+import config as C  # noqa: E402,F401  (re-exported for other insights modules)
 
 # ---------------------------------------------------------------- entity graph
 

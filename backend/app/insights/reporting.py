@@ -16,8 +16,9 @@ from datetime import datetime, timedelta
 import pandas as pd
 from sqlalchemy import text
 
-import config as C
-from . import common, detect, predict, tickets as ticket_mod, verify
+from . import common, detect, predict, tickets as ticket_mod, verify  # noqa: I001
+from . import common
+C = common.C
 
 
 # ------------------------------------------------------------------ alerts
