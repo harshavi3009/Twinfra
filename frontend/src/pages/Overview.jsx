@@ -1,5 +1,5 @@
 import { useEffect, useState } from 'react'
-import { getAlerts, getBuilding, getCampus, getRoom } from '../api/client.js'
+import { getAlerts, getBuilding, getCampus, getConnections, getImpact, getRoom } from '../api/client.js'
 import CreateTicketModal from '../components/CreateTicketModal.jsx'
 import DrillDownPanel from '../components/DrillDownPanel.jsx'
 import EntityCharts from '../components/EntityCharts.jsx'
@@ -10,8 +10,24 @@ import { Campus3D } from '../campus3d/index.jsx'
 export default function Overview() {
   const { data: campus, error } = usePolling(getCampus)
   const { data: alerts } = usePolling(() => getAlerts(true))
+  const { data: connections } = usePolling(getConnections)
   // Selection state lives here; the 3D view and the right panel both use it.
   const [selection, setSelection] = useState({ buildingId: null, floorId: null, roomId: null, equipmentId: null })
+  // 3D controls: day/night, and the "what if the substation fails" impact result.
+  const [timeOfDay, setTimeOfDay] = useState('day')
+  const [highlightIds, setHighlightIds] = useState([])
+  const [impactNote, setImpactNote] = useState('')
+  const runImpact = () =>
+    getImpact('UT-SUB')
+      .then((r) => {
+        setHighlightIds(r.affected.ids)
+        setImpactNote(`Substation fails: ${r.affected.rooms} rooms and ${r.affected.equipment} equipment affected`)
+      })
+      .catch(() => {})
+  const clearImpact = () => {
+    setHighlightIds([])
+    setImpactNote('')
+  }
   // Set when "Create ticket" is clicked on an asset card; the form opens prefilled with that equipment.
   const [newTicket, setNewTicket] = useState(null)
 
@@ -51,6 +67,20 @@ export default function Overview() {
   return (
     <div className="flex flex-col gap-4">
       <KpiStrip totals={campus.totals} alerts={alerts} />
+      <div className="flex flex-wrap items-center gap-2 text-sm">
+        <button type="button" className="rounded border px-3 py-1" onClick={highlightIds.length ? clearImpact : runImpact}>
+          {highlightIds.length ? 'Clear impact' : 'What if the substation fails?'}
+        </button>
+        <button
+          type="button"
+          className="rounded border px-3 py-1"
+          onClick={() => setTimeOfDay((t) => (t === 'day' ? 'night' : 'day'))}
+        >
+          {timeOfDay === 'day' ? 'Night view' : 'Day view'}
+        </button>
+        {impactNote && <span className="text-critical">{impactNote}</span>}
+        <span className="text-muted">Click the substation or water tank on the map to show its lines.</span>
+      </div>
       <div className="flex h-[520px] gap-4">
         <div className="min-w-0 flex-1">
           <Campus3D
@@ -59,6 +89,9 @@ export default function Overview() {
             onSelect={setSelection}
             buildingDetail={buildingDetail}
             roomDetail={roomDetail}
+            connections={connections}
+            highlightIds={highlightIds}
+            timeOfDay={timeOfDay}
           />
         </div>
         <aside className="w-96 shrink-0 overflow-auto">

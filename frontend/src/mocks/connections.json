@@ -1,0 +1,98 @@
+{
+  "nodes": [
+    {
+      "id": "UT-SUB",
+      "type": "substation"
+    },
+    {
+      "id": "UT-TANK",
+      "type": "water_tank"
+    },
+    {
+      "id": "B1",
+      "type": "building"
+    },
+    {
+      "id": "B2",
+      "type": "building"
+    },
+    {
+      "id": "B3",
+      "type": "building"
+    },
+    {
+      "id": "B4",
+      "type": "building"
+    },
+    {
+      "id": "B5",
+      "type": "building"
+    },
+    {
+      "id": "B6",
+      "type": "building"
+    }
+  ],
+  "edges": [
+    {
+      "from": "UT-SUB",
+      "to": "B1",
+      "utility": "electricity"
+    },
+    {
+      "from": "UT-SUB",
+      "to": "B2",
+      "utility": "electricity"
+    },
+    {
+      "from": "UT-SUB",
+      "to": "B3",
+      "utility": "electricity"
+    },
+    {
+      "from": "UT-SUB",
+      "to": "B4",
+      "utility": "electricity"
+    },
+    {
+      "from": "UT-SUB",
+      "to": "B5",
+      "utility": "electricity"
+    },
+    {
+      "from": "UT-SUB",
+      "to": "B6",
+      "utility": "electricity"
+    },
+    {
+      "from": "UT-TANK",
+      "to": "B1",
+      "utility": "water"
+    },
+    {
+      "from": "UT-TANK",
+      "to": "B2",
+      "utility": "water"
+    },
+    {
+      "from": "UT-TANK",
+      "to": "B3",
+      "utility": "water"
+    },
+    {
+      "from": "UT-TANK",
+      "to": "B4",
+      "utility": "water"
+    },
+    {
+      "from": "UT-TANK",
+      "to": "B5",
+      "utility": "water"
+    },
+    {
+      "from": "UT-TANK",
+      "to": "B6",
+      "utility": "water"
+    }
+  ]
+}

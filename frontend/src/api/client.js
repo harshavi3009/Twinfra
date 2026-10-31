@@ -5,6 +5,8 @@ import buildingMock from '../mocks/building_B1.json'
 import equipmentMock from '../mocks/equipment_EQ-0042.json'
 import alertsMock from '../mocks/alerts.json'
 import ticketsMock from '../mocks/tickets.json'
+import connectionsMock from '../mocks/connections.json'
+import impactMock from '../mocks/impact.json'
 
 const BASE_URL = import.meta.env.VITE_API_URL || 'http://localhost:8000'
 export const USE_MOCK = import.meta.env.VITE_USE_MOCK === 'true'
@@ -111,17 +113,11 @@ export const importCsv = async (file, commit = false) => {
   return request(`/api/import/csv?commit=${commit}`, { method: 'POST', body: form })
 }
 
-export const getConnections = () =>
-  USE_MOCK
-    ? mock({
-        nodes: [{ id: 'UT-SUB', type: 'substation' }, { id: 'B1', type: 'building' }],
-        edges: [{ from: 'UT-SUB', to: 'B1', utility: 'electricity' }],
-      })
-    : request('/api/connections')
+export const getConnections = () => (USE_MOCK ? mock(connectionsMock) : request('/api/connections'))
 
 export const getImpact = (id) =>
   USE_MOCK
-    ? mock({ id, affected: { rooms: 8, equipment: 31, ids: [] } })
+    ? mock({ id, affected: impactMock[id] ?? { rooms: 0, equipment: 0, ids: [] } })
     : request(`/api/connections/${id}/impact`)
 
 // ---- Tickets & technicians ----
