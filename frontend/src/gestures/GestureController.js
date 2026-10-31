@@ -12,7 +12,7 @@
  *   - the hand leaving the frame must not cause a jump when it returns -> reset
  */
 
-import { classify, palmCenter, twoHandDistance, mirror } from './classify.js'
+import { classify, palmCenter, twoHandDistance, mirror, fingerScores } from './classify.js'
 
 // ---- tuning (all in one place so it can be explained and adjusted) ----
 export const TUNING = {
@@ -50,6 +50,11 @@ export class GestureController {
    */
   constructor(send, now = () => performance.now() / 1000, tuning = {}) {
     this.send = send
+    /** Last 20 commands emitted, newest first. Read by the debug overlay. */
+    this.history = []
+    /** Debug only: what the classifier said this frame, and the finger ratios. */
+    this.lastRaw = '-'
+    this.lastRatios = null
     this.now = now
     this.tuning = { ...TUNING, ...tuning }
 
@@ -116,6 +121,8 @@ export class GestureController {
     // ---- one hand ----
     const lm = mirrored[0]
     const raw = classify(lm)
+    this.lastRaw = raw
+    this.lastRatios = fingerScores(lm)
     // Coming back from two-hand zoom, the last gesture was "zoom"; seed the
     // stabiliser so returning to a fist does not need three more frames.
     if (this.stable === 'zoom') {

@@ -8,77 +8,83 @@
 import { test } from 'node:test'
 import assert from 'node:assert/strict'
 
-import { classify, palmCenter, twoHandDistance, handSize, fingerRatios } from './classify.js'
+import { classify, classifyPose, FINGERS } from './classify.js'
 import { GestureController } from './GestureController.js'
 
 // ---------------------------------------------------------------- helpers
 
+import { fingerScores } from './classify.js'
+
+const OFFSETS = [-0.34, -0.04, 0.26, 0.52]
+const KNUCKLE_Y = [0.66, 0.72, 0.66, 0.56]
+
 /**
- * Build 21 fake landmarks for a hand of a given pose.
- * Coordinates are 0..1 image space with y growing downward.
+ * A hand the way MediaPipe actually reports one: wrist at the bottom, knuckles
+ * in a shallow arc above it, fingers pointing up when straight and folding back
+ * down toward the palm when curled.
+ *
+ * `reach` is per finger (index, middle, ring, pinky), 1 = straight, 0 = folded.
+ * Real hands sit in between — `reach: [0.25, 0.2, 0.2, 0.2]` is what an actual
+ * fist measures like, and it is the case that broke the first two classifiers.
  */
-function makeHand({ open = 0, reach = null, thumbOut = false, pinch = false, cx = 0.5, cy = 0.5, scale = 1 } = {}) {
-  const s = 0.1 * scale // hand size in image units
+function makeHand({ reach = [1, 1, 1, 1], cx = 0.5, cy = 0.62, scale = 1, thumbOut = false, pinch = false } = {}) {
+  const s = 0.16 * scale
   const lm = new Array(21).fill(null).map(() => [cx, cy])
+  lm[0] = [cx, cy]                                   // wrist
 
-  lm[0] = [cx, cy + s] // wrist
-  lm[5] = [cx - s * 0.3, cy + s * 0.3] // index knuckle
-  lm[9] = [cx, cy + s * 0.2] // middle knuckle
-  lm[13] = [cx + s * 0.3, cy + s * 0.3] // ring knuckle
-  lm[17] = [cx + s * 0.5, cy + s * 0.45] // pinky knuckle
-
-  // finger (tip, joint, x-offset)
-  const fingers = [
-    [8, 6, -0.3],
-    [12, 10, 0],
-    [16, 14, 0.3],
-    [20, 18, 0.5],
-  ]
-
-  fingers.forEach(([tip, joint, dx], i) => {
-    const knuckle = lm[[5, 9, 13, 17][i]]
-    // `reach` 1 = fully straight, 0 = fully curled. Real hands sit in between.
-    const r = reach ? reach[i] : i < open ? 1 : 0
-    lm[joint] = [knuckle[0] + dx * s * 0.3, knuckle[1] - s * 0.3]
-    lm[tip] = [knuckle[0] + dx * s * 0.3, knuckle[1] - s * (0.1 + 0.9 * r)]
+  FINGERS.forEach(([tip, joint, mcp], i) => {
+    const kx = cx + OFFSETS[i] * s
+    const ky = cy - KNUCKLE_Y[i] * s
+    lm[mcp] = [kx, ky]
+    const r = reach[i]
+    // straight: tip well above the knuckle. folded: tip drops back past it.
+    lm[joint] = [kx, ky - s * 0.45 * r + s * 0.10 * (1 - r)]
+    lm[tip] = [kx, ky - s * 0.95 * r + s * 0.30 * (1 - r)]
   })
 
-  // thumb. A tucked thumb must NOT coincide with the index tip, or every fist
-  // would look like a pinch -- that is a real bug the classifier had.
+  lm[1] = [cx - 0.30 * s, cy - 0.10 * s]
+  lm[2] = [cx - 0.52 * s, cy - 0.22 * s]
   if (pinch) {
-    lm[3] = [cx - s * 0.2, cy + s * 0.35]
-    lm[4] = lm[8] // thumb tip touches index tip
+    lm[4] = [...lm[8]]                               // thumb tip on index tip
+    lm[3] = [cx - 0.5 * s, cy - 0.3 * s]
   } else if (thumbOut) {
-    lm[3] = [cx - s * 0.5, cy + s * 0.2]
-    lm[4] = [cx - s * 0.7, cy - s * 0.2]
+    lm[3] = [cx - 1.10 * s, cy - 0.55 * s]
+    lm[4] = [cx - 1.25 * s, cy - 1.00 * s]
   } else {
-    lm[3] = [cx - s * 0.45, cy + s * 0.45]
-    lm[4] = [cx - s * 0.62, cy + s * 0.55]
+    lm[3] = [cx - 0.55 * s, cy - 0.45 * s]
+    lm[4] = [cx - 0.48 * s, cy - 0.58 * s]
   }
-
   return lm
 }
 
 // ---------------------------------------------------------------- classify
 
 test('open palm is recognised', () => {
-  assert.equal(classify(makeHand({ open: 4 })), 'open')
+  assert.equal(classify(makeHand()), 'open')
 })
 
 test('closed fist is recognised', () => {
-  assert.equal(classify(makeHand({ open: 0 })), 'fist')
+  assert.equal(classify(makeHand({ reach: [0, 0, 0, 0] })), 'fist')
 })
 
 test('one finger is a point', () => {
-  assert.equal(classify(makeHand({ open: 1 })), 'point')
+  assert.equal(classify(makeHand({ reach: [1, 0, 0, 0] })), 'point')
 })
 
 test('two fingers is peace', () => {
-  assert.equal(classify(makeHand({ open: 2 })), 'peace')
+  assert.equal(classify(makeHand({ reach: [1, 1, 0, 0] })), 'peace')
 })
 
 test('three fingers is three', () => {
-  assert.equal(classify(makeHand({ open: 3 })), 'three')
+  assert.equal(classify(makeHand({ reach: [1, 1, 1, 0] })), 'three')
+})
+
+test('thumbs up is recognised', () => {
+  assert.equal(classify(makeHand({ reach: [0, 0, 0, 0], thumbOut: true })), 'thumbs_up')
+})
+
+test('a pinch is recognised, not mistaken for a fist', () => {
+  assert.equal(classify(makeHand({ reach: [1, 0, 0, 0], pinch: true })), 'pinch')
 })
 
 test('garbage input is unknown, never a crash', () => {
@@ -88,23 +94,41 @@ test('garbage input is unknown, never a crash', () => {
 })
 
 test('classification is scale independent', () => {
-  // Same pose, hand twice as far from the camera. This is the bug that makes
-  // gesture demos fail when the presenter steps back.
-  assert.equal(classify(makeHand({ open: 4, scale: 1 })), 'open')
-  assert.equal(classify(makeHand({ open: 4, scale: 0.5 })), 'open')
-  assert.equal(classify(makeHand({ open: 2, scale: 0.4 })), 'peace')
+  assert.equal(classify(makeHand({ scale: 1 })), 'open')
+  assert.equal(classify(makeHand({ scale: 0.5 })), 'open')
+  assert.equal(classify(makeHand({ reach: [1, 1, 0, 0], scale: 0.4 })), 'peace')
 })
 
-test('palm center and two-hand distance are sensible', () => {
-  const a = makeHand({ open: 4, cx: 0.3 })
-  const b = makeHand({ open: 4, cx: 0.7 })
-  assert.ok(twoHandDistance([a, b]) > twoHandDistance([a, a]))
-  const [x] = palmCenter(a)
-  assert.ok(x > 0.25 && x < 0.35)
+test('an extended finger scores positively, a folded one negatively', () => {
+  const open = fingerScores(makeHand())
+  const fist = fingerScores(makeHand({ reach: [0, 0, 0, 0] }))
+  for (const v of open) assert.ok(v > 0, `open finger should score > 0, got ${v}`)
+  for (const v of fist) assert.ok(v < 0, `folded finger should score < 0, got ${v}`)
 })
 
-test('hand size scales with distance', () => {
-  assert.ok(handSize(makeHand({ scale: 1 })) > handSize(makeHand({ scale: 0.5 })))
+// ---- real hands, which is where the first two designs failed ----
+
+test('a sloppy fist still reads as a fist', () => {
+  // A real fist never folds perfectly. Measured against a fixed distance this
+  // scored as a "point", which is why panning never fired.
+  assert.equal(classify(makeHand({ reach: [0.25, 0.2, 0.2, 0.2] })), 'fist')
+})
+
+test('a sloppy peace sign still reads as peace', () => {
+  // Ring and pinky do not fully curl on a real hand. An earlier design read this
+  // as an open palm, which is why the explode toggle never fired.
+  assert.equal(classify(makeHand({ reach: [1, 1, 0.35, 0.3] })), 'peace')
+})
+
+test('an open hand is not mistaken for peace', () => {
+  // The short pinky on a real open hand scores low; that must not read as folded.
+  assert.equal(classify(makeHand()), 'open')
+})
+
+test('pose scores separate open from peace', () => {
+  const open = classifyPose(makeHand())
+  const peace = classifyPose(makeHand({ reach: [1, 1, 0, 0] }))
+  assert.ok(open.min > 0 && peace.min < 0, 'open hand should have no folded finger')
 })
 
 // ---------------------------------------------------------------- controller
@@ -138,7 +162,7 @@ test('no hand produces no commands', () => {
 test('moving an open palm emits orbit, not a jump', () => {
   const h = harness({ stableFrames: 1 })
   // establish a position first
-  for (let i = 0; i < 4; i += 1) h.push([makeHand({ open: 4, cx: 0.5 + i * 0.02 })])
+  for (let i = 0; i < 4; i += 1) h.push([makeHand({ reach: [1,1,1,1], cx: 0.5 + i * 0.02 })])
   assert.ok(h.names().includes('orbit'))
   const orbits = h.sent.filter((s) => s.name === 'orbit')
   // each delta must be small (a fraction of the screen), not one giant leap
@@ -147,19 +171,19 @@ test('moving an open palm emits orbit, not a jump', () => {
 
 test('a still palm does not emit orbit every frame', () => {
   const h = harness({ stableFrames: 1 })
-  const still = makeHand({ open: 4, cx: 0.5 })
+  const still = makeHand({ reach: [1,1,1,1], cx: 0.5 })
   for (let i = 0; i < 6; i += 1) h.push([still])
   assert.equal(h.names().filter((n) => n === 'orbit').length, 0)
 })
 
 test('two hands apart emits zoom in', () => {
   const h = harness({ stableFrames: 1 })
-  const left = makeHand({ open: 4, cx: 0.3 })
-  const right = makeHand({ open: 4, cx: 0.7 })
+  const left = makeHand({ reach: [1,1,1,1], cx: 0.3 })
+  const right = makeHand({ reach: [1,1,1,1], cx: 0.7 })
   h.push([left, right])
   h.push([
-    makeHand({ open: 4, cx: 0.2 }),
-    makeHand({ open: 4, cx: 0.8 }),
+    makeHand({ reach: [1,1,1,1], cx: 0.2 }),
+    makeHand({ reach: [1,1,1,1], cx: 0.8 }),
   ])
   const zoom = h.sent.find((s) => s.name === 'zoom')
   assert.ok(zoom, 'expected a zoom command')
@@ -168,7 +192,7 @@ test('two hands apart emits zoom in', () => {
 
 test('peace fires toggle_explode exactly once per hold', () => {
   const h = harness({ stableFrames: 1, holdSeconds: 0.8, cooldownSeconds: 1.3 })
-  const peace = makeHand({ open: 2 })
+  const peace = makeHand({ reach: [1,1,0,0] })
   for (let i = 0; i < 30; i += 1) {
     h.push([peace])
     h.advance(0.1) // 3 seconds of holding
@@ -179,31 +203,31 @@ test('peace fires toggle_explode exactly once per hold', () => {
 
 test('peace fires only after the hold time, not immediately', () => {
   const h = harness({ stableFrames: 1, holdSeconds: 0.8 })
-  h.push([makeHand({ open: 2 })])
+  h.push([makeHand({ reach: [1,1,0,0] })])
   assert.equal(h.names().filter((n) => n === 'toggle_explode').length, 0)
 })
 
 test('a flickering misread does not count as a gesture', () => {
   const h = harness({ stableFrames: 3 })
-  h.push([makeHand({ open: 4 })])
-  h.push([makeHand({ open: 0 })]) // one bad frame
-  h.push([makeHand({ open: 4 })])
+  h.push([makeHand({ reach: [1,1,1,1] })])
+  h.push([makeHand({ reach: [0,0,0,0] })]) // one bad frame
+  h.push([makeHand({ reach: [1,1,1,1] })])
   assert.notEqual(h.controller.stable, 'fist')
 })
 
 test('hand leaving the frame resets state so the next entry does not jump', () => {
   const h = harness({ stableFrames: 1 })
-  for (let i = 0; i < 4; i += 1) h.push([makeHand({ open: 4, cx: 0.9 })])
+  for (let i = 0; i < 4; i += 1) h.push([makeHand({ reach: [1,1,1,1], cx: 0.9 })])
   h.push([]) // hand gone
   h.sent.length = 0
-  h.push([makeHand({ open: 4, cx: 0.1 })]) // reappears far away
+  h.push([makeHand({ reach: [1,1,1,1], cx: 0.1 })]) // reappears far away
   const orbits = h.sent.filter((s) => s.name === 'orbit')
   assert.equal(orbits.length, 0, 'must not jump after the hand reappears')
 })
 
 test('pinch emits select once, not every frame', () => {
   const h = harness({ stableFrames: 1 })
-  const pinching = makeHand({ open: 1, pinch: true })
+  const pinching = makeHand({ reach: [1,0,0,0], pinch: true })
   for (let i = 0; i < 5; i += 1) h.push([pinching])
   assert.equal(h.names().filter((n) => n === 'select').length, 1)
 })
@@ -225,7 +249,7 @@ test('every command the controller emits is one the bridge handles', () => {
 
 test('orbit and pan args are [dx, dy] pairs of finite numbers', () => {
   const h = harness({ stableFrames: 1 })
-  for (let i = 0; i < 5; i += 1) h.push([makeHand({ open: 4, cx: 0.4 + i * 0.03 })])
+  for (let i = 0; i < 5; i += 1) h.push([makeHand({ reach: [1,1,1,1], cx: 0.4 + i * 0.03 })])
   const cmd = h.sent.find((s) => s.name === 'orbit')
   assert.ok(cmd)
   assert.equal(cmd.arg.length, 2)
@@ -234,9 +258,9 @@ test('orbit and pan args are [dx, dy] pairs of finite numbers', () => {
 
 test('zoom factor is a positive multiplier near 1', () => {
   const h = harness({ stableFrames: 1 })
-  h.push([makeHand({ open: 4, cx: 0.3 }), makeHand({ open: 4, cx: 0.7 })])
-  h.push([makeHand({ open: 4, cx: 0.2 }), makeHand({ open: 4, cx: 0.8 })])
-  h.push([makeHand({ open: 4, cx: 0.1 }), makeHand({ open: 4, cx: 0.9 })])
+  h.push([makeHand({ reach: [1,1,1,1], cx: 0.3 }), makeHand({ reach: [1,1,1,1], cx: 0.7 })])
+  h.push([makeHand({ reach: [1,1,1,1], cx: 0.2 }), makeHand({ reach: [1,1,1,1], cx: 0.8 })])
+  h.push([makeHand({ reach: [1,1,1,1], cx: 0.1 }), makeHand({ reach: [1,1,1,1], cx: 0.9 })])
   for (const z of h.sent.filter((s) => s.name === 'zoom')) {
     assert.ok(z.arg > 0, 'zoom factor must be positive')
     assert.ok(z.arg >= 0.8 && z.arg <= 1.25, `zoom factor out of the clamped range: ${z.arg}`)
@@ -260,7 +284,7 @@ test('bursty commands are not dropped when frames are slow', () => {
   const h = harness({ stableFrames: 1 })
   const before = h.sent.filter((s) => s.name === 'pan').length
   for (let i = 0; i < 12; i += 1) {
-    h.push([makeHand({ open: 0, cx: 0.35 + i * 0.03 })])
+    h.push([makeHand({ reach: [0,0,0,0], cx: 0.35 + i * 0.03 })])
   }
   const pans = h.sent.filter((s) => s.name === 'pan').length - before
   assert.ok(pans >= 8, `expected most of the 12 pan frames to emit, got ${pans}`)
@@ -271,7 +295,7 @@ test('pan deltas follow the hand after mirroring', () => {
   // moving your hand right moves the model right. In camera space that means
   // DECREASING x, so this asserts the mirror actually happened.
   const h = harness({ stableFrames: 1 })
-  for (let i = 0; i < 8; i += 1) h.push([makeHand({ open: 0, cx: 0.7 - i * 0.04 })])
+  for (let i = 0; i < 8; i += 1) h.push([makeHand({ reach: [0,0,0,0], cx: 0.7 - i * 0.04 })])
   const pan = h.sent.find((s) => s.name === 'pan')
   assert.ok(pan, 'expected a pan command')
   assert.ok(pan.arg[0] > 0, `hand moving right should give positive dx, got ${pan.arg[0]}`)
@@ -279,11 +303,11 @@ test('pan deltas follow the hand after mirroring', () => {
 
 test('zoom emits repeatedly while the hands keep moving', () => {
   const h = harness({ stableFrames: 1 })
-  h.push([makeHand({ open: 4, cx: 0.35 }), makeHand({ open: 4, cx: 0.65 })])
+  h.push([makeHand({ reach: [1,1,1,1], cx: 0.35 }), makeHand({ reach: [1,1,1,1], cx: 0.65 })])
   for (let i = 1; i <= 6; i += 1) {
     h.push([
-      makeHand({ open: 4, cx: 0.35 - i * 0.03 }),
-      makeHand({ open: 4, cx: 0.65 + i * 0.03 }),
+      makeHand({ reach: [1,1,1,1], cx: 0.35 - i * 0.03 }),
+      makeHand({ reach: [1,1,1,1], cx: 0.65 + i * 0.03 }),
     ])
   }
   const zooms = h.sent.filter((s) => s.name === 'zoom')
@@ -292,28 +316,13 @@ test('zoom emits repeatedly while the hands keep moving', () => {
 })
 
 
-// ---------------------------------------------------------------- real hands
-
-test('a sloppy fist still reads as a fist', () => {
-  // Real fists never fold perfectly: the fingertips sit slightly past the middle
-  // joint. An absolute threshold called this a "point", which is why pan did not
-  // work. Comparison between fingers fixes it.
-  assert.equal(classify(makeHand({ reach: [0.35, 0.3, 0.3, 0.3] })), 'fist')
-})
-
-test('a sloppy peace sign still reads as peace', () => {
-  // Same story: ring and pinky do not fully curl, and used to score above the
-  // open threshold, so the whole hand was classified as an open palm -- which is
-  // why the explode toggle never fired.
-  assert.equal(classify(makeHand({ reach: [1, 1, 0.45, 0.4] })), 'peace')
-})
-
 test('a closed fist is not mistaken for a pinch', () => {
   assert.equal(classify(makeHand({ reach: [0, 0, 0, 0] })), 'fist')
 })
 
-test('fingers are ranked by straightness', () => {
+test('fingers are scored from the palm outward, per finger', () => {
   const peace = makeHand({ reach: [1, 1, 0.3, 0.3] })
-  const r = fingerRatios(peace)
-  assert.ok(r[0] > r[2] && r[1] > r[3], `expected index/middle straighter: ${r}`)
+  const scores = fingerScores(peace)
+  assert.ok(scores[0] > scores[2], `index should out-score ring: ${scores}`)
+  assert.ok(scores[1] > scores[3], `middle should out-score pinky: ${scores}`)
 })

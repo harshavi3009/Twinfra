@@ -80,6 +80,9 @@ export default function Overview() {
     error: gestureError,
     ready: gestureReady,
     commandRef: gestureCommandRef,
+    controllerRef: gestureControllerRef,
+    debug: gestureDebug,
+    setDebug: setGestureDebug,
   } = useHandGestures({ enabled: handControl, videoRef, onCommand: () => {} })
 
   // G turns hand control on/off, so the presenter does not have to find a button
@@ -95,10 +98,18 @@ export default function Overview() {
     return () => window.removeEventListener('keydown', onKey)
   }, [])
 
-  const handleGesturePick = (picked) => {
+  const handleGesturePick = (picked, kind) => {
     // `picked` is an entity id once Rishi tags building groups with
     // userData.entityId; until then it is {position} and we ignore it.
-    if (typeof picked === 'string') selectEntity(picked)
+    if (typeof picked !== 'string') return
+    // Peace gesture: select the building under the camera (which explodes its
+    // floors), or step back out if that building is already the selection.
+    if (kind === 'toggle_explode') {
+      if (selection.buildingId === picked) setSelection(EMPTY)
+      else selectEntity(picked)
+      return
+    }
+    selectEntity(picked)
   }
 
   // The Alerts page links here with the entity to show.
@@ -164,6 +175,9 @@ export default function Overview() {
               error={gestureError}
               ready={gestureReady}
               videoRef={videoRef}
+              controllerRef={gestureControllerRef}
+              debug={gestureDebug}
+              onDebugToggle={setGestureDebug}
             />
           )}
         </div>

@@ -15,6 +15,15 @@ export function useHandGestures({ enabled = false, videoRef, onCommand } = {}) {
   const [gesture, setGesture] = useState('none')
   const [error, setError] = useState('')
   const [ready, setReady] = useState(false)
+  const [debug, setDebug] = useState(false)
+
+  // `__gestureDebug(true)` in the console turns the diagnostics panel on.
+  useEffect(() => {
+    globalThis.__gestureDebug = (on = true) => setDebug(Boolean(on))
+    return () => {
+      delete globalThis.__gestureDebug
+    }
+  }, [])
 
   /** Latest command for GestureCameraBridge. `{name, arg}` or null. */
   const commandRef = useRef(null)
@@ -50,6 +59,12 @@ export function useHandGestures({ enabled = false, videoRef, onCommand } = {}) {
     // shows what the hand is actually doing.
     controllerRef.current = new GestureController((name, arg) => {
       send(name, arg)
+      // keep a short log for the debug overlay
+      const c = controllerRef.current
+      if (c && name !== 'cursor') {
+        c.history.unshift({ name, arg, at: Date.now() })
+        if (c.history.length > 20) c.history.length = 20
+      }
     })
 
     const tracker = new HandTracker({
@@ -87,5 +102,5 @@ export function useHandGestures({ enabled = false, videoRef, onCommand } = {}) {
     }
   }, [enabled, videoRef, send])
 
-  return { gesture, error, ready, commandRef }
+  return { gesture, error, ready, commandRef, controllerRef, debug, setDebug }
 }

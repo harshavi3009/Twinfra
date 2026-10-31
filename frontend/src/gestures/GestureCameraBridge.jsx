@@ -49,7 +49,33 @@ export default function GestureCameraBridge({ commandRef, onPick, buildings = nu
   // Accumulated motion since the last frame. Applied once, then cleared.
   const pending = useRef({ orbit: [0, 0], pan: [0, 0], dolly: 0 })
 
-  /** Raycast from the fingertip: the same thing a mouse click would do. */
+  /**
+   * The building closest to whatever the camera is looking at. Used by the peace
+   * gesture, which has no pointer to raycast from.
+   */
+  function nearestBuilding(cam, target, list) {
+    if (!list?.length) return null
+    const focus = target ?? cam.position
+    let best = null
+    let bestD = Infinity
+    for (const b of list) {
+      // layout.js gives buildings `position: { x, z }`, not a vector.
+      const pos = b.position ?? b.center ?? {}
+      const x = pos.x ?? 0
+      const z = pos.z ?? 0
+      const d = (x - focus.x) ** 2 + (z - focus.z) ** 2
+      if (d < bestD) {
+        bestD = d
+        best = b
+      }
+    }
+    return best
+  }
+
+  /**
+   * Raycast from the fingertip: the same thing a mouse click would do.
+   * (The peace gesture uses nearestBuilding above, since it has no pointer.)
+   */
   function pick([x, y]) {
     ndc.current.set(x * 2 - 1, -(y * 2 - 1))
     raycaster.current.setFromCamera(ndc.current, camera)
@@ -83,9 +109,16 @@ export default function GestureCameraBridge({ commandRef, onPick, buildings = nu
     onPick?.(null)
   }
 
+  // track whether commands are arriving but being ignored, so the HUD can say so
+  const seen = useRef({ commands: 0, applied: 0, noControls: 0 })
+
   useFrame(() => {
     const cmd = commandRef?.current
-    if (!controls) return
+    if (cmd && cmd.at !== appliedAt.current) seen.current.commands += 1
+    if (!controls) {
+      if (cmd) seen.current.noControls += 1
+      return
+    }
 
     // ---- 1. accumulate any new command (never drop one) ----
     if (cmd && cmd.at !== appliedAt.current) {
@@ -103,6 +136,15 @@ export default function GestureCameraBridge({ commandRef, onPick, buildings = nu
         pending.current.dolly += (1 - cmd.arg) * dist * GAIN.zoom
       } else if (cmd.name === 'select') {
         pick(cmd.arg)
+      } else if (cmd.name === 'toggle_explode') {
+        // Rishi's Building component explodes its floors whenever it is the
+        // selected building -- there is no separate "explode" flag to flip. So
+        // the gesture does what clicking a building does: select the nearest one
+        // (exploding it), or step back out if something is already selected.
+        if (onPick) {
+          const target = nearestBuilding(camera, controls?.target, buildings)
+          onPick(target ? (target.id ?? target) : null, 'toggle_explode')
+        }
       }
     }
 
@@ -122,6 +164,8 @@ export default function GestureCameraBridge({ commandRef, onPick, buildings = nu
       controls.dolly(p.dolly, false)
       p.dolly = 0
     }
+    seen.current.applied = seen.current.commands
+    globalThis.__gestureBridge = seen.current
   })
 
   return null

@@ -10,6 +10,7 @@
  * hand is actually in frame before they start waving at a projector.
  */
 
+import { useEffect, useState } from 'react'
 import { GESTURE_LABEL } from './classify.js'
 
 const DOT = {
@@ -50,7 +51,7 @@ export function GestureToggleButton({ enabled, onToggle }) {
   )
 }
 
-export function GestureHud({ gesture, error, ready, videoRef }) {
+export function GestureHud({ gesture, error, ready, videoRef, controllerRef, debug, onDebugToggle }) {
   return (
     <div className="pointer-events-none absolute bottom-3 left-3 z-10 w-52 overflow-hidden rounded-md border border-white/15 bg-black/75 backdrop-blur">
       <video
@@ -69,6 +70,63 @@ export function GestureHud({ gesture, error, ready, videoRef }) {
         )}
       </div>
       {error && <p className="px-2 pb-2 text-[10px] leading-snug text-amber-400">{error}</p>}
+      <label className="flex cursor-pointer items-center gap-1.5 border-t border-white/10 px-2 py-1 text-[10px] text-slate-400">
+        <input
+          type="checkbox"
+          checked={Boolean(debug)}
+          onChange={(e) => onDebugToggle?.(e.target.checked)}
+          className="h-3 w-3 accent-emerald-400"
+        />
+        diagnostics
+      </label>
+      {debug && <DebugRows controllerRef={controllerRef} />}
+    </div>
+  )
+}
+
+/**
+ * Live diagnostics. Enable with `__gestureDebug(true)` in the console (or the
+ * checkbox in the HUD). It answers the only three questions that matter when a
+ * gesture does nothing:
+ *   1. does the classifier see the pose I am making?
+ *   2. is the controller emitting a command for it?
+ *   3. is the camera receiving it?
+ */
+function DebugRows({ controllerRef }) {
+  // The controller is a plain object mutated every frame, so read it on a timer
+  // rather than during render (React should not see refs change mid-render).
+  const [snap, setSnap] = useState(null)
+  useEffect(() => {
+    const id = setInterval(() => {
+      const c = controllerRef?.current
+      if (!c) return
+      setSnap({
+        stable: c.stable,
+        raw: c.lastRaw,
+        ratios: c.lastRatios,
+        history: c.history.slice(0, 4),
+      })
+    }, 250)
+    return () => clearInterval(id)
+  }, [controllerRef])
+  const c = snap
+  const recent = c?.history ?? []
+  const ratios = c?.ratios
+  return (
+    <div className="border-t border-white/10 px-2 py-1.5 font-mono text-[10px] leading-relaxed text-slate-400">
+      <div>
+        stable <span className="text-slate-200">{c?.stable ?? '-'}</span>
+        {'  '}raw <span className="text-slate-200">{c?.lastRaw ?? '-'}</span>
+      </div>
+      {ratios && <div>ratios {ratios.map((r) => r.toFixed(2)).join(' ')}</div>}
+      <div className="mt-1 text-slate-500">last commands</div>
+      {recent.length === 0 && <div className="text-amber-400">none yet</div>}
+      {recent.map((h, i) => (
+        <div key={`${h.at}-${i}`} className="text-slate-300">
+          {h.name}
+          {Array.isArray(h.arg) ? ` [${h.arg.map((v) => v.toFixed(3)).join(', ')}]` : ''}
+        </div>
+      ))}
     </div>
   )
 }
