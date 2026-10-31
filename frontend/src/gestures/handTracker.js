@@ -4,11 +4,9 @@
  * Uses MediaPipe Tasks Vision (the browser build). Two things matter for a
  * hackathon demo:
  *
- *  1. The WASM bundle must be served locally, not fetched from a CDN. Venue
- *     wifi will not download 10 MB reliably and the demo dies. Run
- *        npm i @mediapipe/tasks-vision
- *     and let Vite serve node_modules; passing `baseOptions.delegate: 'GPU'`
- *     falls back to CPU on machines without WebGL2.
+ *  1. BOTH the WASM runtime and the 7.5 MB hand model are served from public/,
+ *     never a CDN. Venue wifi will not pull that reliably and the demo dies.
+ *     `delegate: 'GPU'` falls back to CPU on machines without WebGL2.
  *
  *  2. Nothing here throws into React. Every failure becomes `onError(msg)` so
  *     the UI can show "camera unavailable" and the demo continues with the mouse.
@@ -16,8 +14,9 @@
  * Privacy: frames never leave the machine. No recording, no upload.
  */
 
-const MODEL_URL =
-  'https://storage.googleapis.com/mediapipe-models/hand_landmarker/hand_landmarker/float16/1/hand_landmarker.task'
+// Served from public/, not a CDN. Venue wifi cannot be trusted to pull 7.5 MB
+// when a judge is watching -- that is a failed demo, not a slow one.
+const MODEL_PATH = '/mediapipe-wasm/hand_landmarker.task'
 
 export class HandTracker {
   /**
@@ -68,13 +67,19 @@ export class HandTracker {
         // Vite copies this from node_modules; no CDN at demo time.
         '/mediapipe-wasm',
       )
-      this.landmarker = await HandLandmarker.createFromOptions(fileset, {
-        baseOptions: { modelAssetPath: MODEL_URL, delegate: 'GPU' },
+      const options = (delegate) => ({
+        baseOptions: { modelAssetPath: MODEL_PATH, delegate },
         numHands: 2,
         runningMode: 'VIDEO',
         minHandDetectionConfidence: 0.6,
         minTrackingConfidence: 0.5,
       })
+      try {
+        this.landmarker = await HandLandmarker.createFromOptions(fileset, options('GPU'))
+      } catch {
+        // Some machines have no usable WebGL2; CPU is slower but still fine at 15 fps.
+        this.landmarker = await HandLandmarker.createFromOptions(fileset, options('CPU'))
+      }
     } catch (err) {
       this.fail(`Hand tracking could not start: ${err?.message || err}`)
       return
