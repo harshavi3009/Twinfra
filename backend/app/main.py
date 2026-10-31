@@ -53,3 +53,13 @@ app.include_router(connections.router)
 app.include_router(tickets.router)
 app.include_router(technicians.router)
 app.include_router(insights_router)
+
+# Must be mounted LAST: a "/" mount catches every path, so mounting it before
+# the routers would shadow /api/*. Declared after include_router so /api wins.
+# Optional: serve the built React app so the Android WebView can load the 3D
+# campus from the same origin as the API. Only active when frontend/dist has
+# been built (`npm run build`), so the backend still runs standalone.
+_FRONTEND_DIST = Path(__file__).resolve().parent.parent.parent / "frontend" / "dist"
+if _FRONTEND_DIST.is_dir():
+    # html=True makes unknown paths fall through to index.html (SPA routing).
+    app.mount("/", StaticFiles(directory=str(_FRONTEND_DIST), html=True), name="frontend")

@@ -84,7 +84,8 @@ def room_readings(rooms, buildings, ts: datetime, rng) -> pd.DataFrame:
         occ = round(frac * cap)
 
         base_kw = {"classroom": 1.6, "lab": 7.0, "office": 1.2, "workshop": 12.0,
-                   "library_hall": 3.0, "hostel_room": 0.6, "server_room": 6.5}[rtype]
+                   "library_hall": 3.0, "hostel_room": 0.6, "server_room": 6.5,
+                   "utility_room": 0.05}[rtype]
         power = base_kw * (0.15 + 0.85 * frac) * (1 + 0.35 * heat)
         power *= float(rng.normal(1.0, C.SIM_NOISE))
 
