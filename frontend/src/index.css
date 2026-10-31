@@ -1,20 +1,26 @@
 @import "tailwindcss";
 
-/* Design tokens: dark "campus control room". Use as bg-bg, text-accent, border-line, etc. */
+/* Design tokens: dark indigo dashboard (violet accent, green/orange/pink status colours).
+   Use as bg-bg, text-accent, border-line, etc. */
 @theme {
-  --color-bg: #0b1220;
-  --color-panel: #111a2e;
-  --color-panel-2: #16223b;
-  --color-line: #22304d;
-  --color-text: #e6edf7;
-  --color-muted: #8ea0bd;
-  --color-accent: #22d3ee;
-  --color-ok: #22c55e;
-  --color-warning: #f59e0b;
-  --color-critical: #ef4444;
-  --color-offline: #64748b;
+  --color-bg: #26292f;
+  --color-panel: #334058;
+  --color-panel-2: #3d4c69;
+  --color-line: #4b5b7a;
+  --color-text: #f4f6fa;
+  --color-muted: #aeb8cc;
+  --color-accent: #8b6cff;
+  --color-ok: #3fd187;
+  --color-warning: #f5a623;
+  --color-critical: #ff4d6d;
+  --color-offline: #7d82a3;
   --font-sans: "Space Grotesk", system-ui, sans-serif;
   --font-mono: "JetBrains Mono", ui-monospace, monospace;
+}
+
+/* Base size for the whole dashboard: Tailwind text sizes are in rem, so they all scale from this. */
+html {
+  font-size: 20px;
 }
 
 html,
