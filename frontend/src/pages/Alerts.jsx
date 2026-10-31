@@ -48,9 +48,14 @@ export default function Alerts() {
       </div>
       {error && !alerts && <p className="mt-4 text-critical">Could not load alerts: {error}</p>}
       {!alerts && !error && <div className="mt-4 h-24 animate-pulse rounded-lg bg-panel" />}
-      <div className="mt-4 grid max-w-3xl gap-2">
+      <div className="mt-4 grid gap-4">
         {shown.map((a) => (
-          <AlertCard key={a.id} alert={a} onSelect={(id) => navigate('/', { state: { entityId: id } })} />
+          <AlertCard
+            key={a.id}
+            alert={a}
+            className="min-h-44 p-6"
+            onSelect={(id) => navigate('/', { state: { entityId: id } })}
+          />
         ))}
       </div>
       {alerts && shown.length === 0 && <p className="mt-4 text-sm text-muted">No alerts match these filters.</p>}

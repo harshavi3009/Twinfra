@@ -7,12 +7,12 @@ const SEVERITY_STYLE = {
 
 const KIND_LABEL = { spike: 'Spike', ghost_load: 'Ghost load', night_leak: 'Night leak', drift: 'Drift' }
 
-export default function AlertCard({ alert, onSelect }) {
+export default function AlertCard({ alert, onSelect, className = '' }) {
   return (
     <button
       type="button"
       onClick={() => onSelect?.(alert.entity_id)}
-      className="w-full rounded-lg border border-line bg-panel p-3 text-left transition-colors hover:border-accent/50"
+      className={`w-full rounded-lg border border-line bg-panel p-3 text-left transition-colors hover:border-accent/50 ${className}`}
     >
       <div className="flex items-center gap-2">
         <span className={`rounded border px-1.5 py-0.5 text-[10px] font-semibold uppercase ${SEVERITY_STYLE[alert.severity]}`}>
