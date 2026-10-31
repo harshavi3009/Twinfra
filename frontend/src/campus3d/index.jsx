@@ -1,27 +1,43 @@
-import { useMemo } from 'react'
+import { useEffect, useMemo, useRef } from 'react'
 import { Canvas } from '@react-three/fiber'
-import { OrbitControls } from '@react-three/drei'
 import { PALETTE } from './constants'
 import Ground from './Ground'
 import Trees from './Trees'
 import Building from './Building'
 import UtilityNode from './UtilityNode'
 import Effects from './Effects'
+import CameraRig from './CameraRig'
+import { useSelection } from './useSelection'
 
 const EMPTY = []
+const DOUBLE_CLICK_MS = 350
+
+const backBtn = {
+  position: 'absolute',
+  top: 12,
+  left: 12,
+  padding: '6px 12px',
+  borderRadius: 8,
+  border: '1px solid rgba(120,180,255,0.35)',
+  background: 'rgba(5,10,20,0.75)',
+  color: '#e6f0ff',
+  font: '13px system-ui, sans-serif',
+  cursor: 'pointer',
+}
 
 /**
  * <Campus3D /> — props follow docs/contract/api.md ("Frontend ↔ 3D component").
- * R1 renders `campus` only; the other props are accepted and wired up in R2/R3.
+ * Click a building -> floors explode + room heatmap -> click a room -> equipment -> click equipment.
+ * `roomDetail` (GET /api/rooms/{id}) is an optional extra prop: it gives the selected room's
+ * equipment list so markers are typed and clickable. Without it, generic markers are drawn.
+ * R3 props (connections, highlightIds, whatIf, timeOfDay) are accepted but not used yet.
  */
 export function Campus3D({
   campus,
-  // eslint-disable-next-line no-unused-vars
   buildingDetail = null,
-  // eslint-disable-next-line no-unused-vars
-  selection = null,
-  // eslint-disable-next-line no-unused-vars
-  onSelect = () => {},
+  selection: selectionProp = null,
+  onSelect,
+  roomDetail = null,
   // eslint-disable-next-line no-unused-vars
   connections = null,
   // eslint-disable-next-line no-unused-vars
@@ -33,50 +49,88 @@ export function Campus3D({
 }) {
   const buildings = campus?.buildings ?? EMPTY
   const utilities = campus?.utilities ?? EMPTY
+  const { selection, select, back, reset } = useSelection(selectionProp, onSelect)
 
   // Look at the middle of the campus.
-  const target = useMemo(() => {
+  const overviewTarget = useMemo(() => {
     if (!buildings.length) return [0, 4, 0]
     const x = buildings.reduce((s, b) => s + b.position.x, 0) / buildings.length
     const z = buildings.reduce((s, b) => s + b.position.z, 0) / buildings.length
     return [x, 4, z]
   }, [buildings])
 
+  // Esc = zoom out one level.
+  useEffect(() => {
+    const onKey = (e) => {
+      if (e.key === 'Escape') back()
+    }
+    window.addEventListener('keydown', onKey)
+    return () => window.removeEventListener('keydown', onKey)
+  }, [back])
+
+  // Double-click on empty space = back to the campus view.
+  const lastMiss = useRef(0)
+  const onPointerMissed = () => {
+    const now = performance.now()
+    if (now - lastMiss.current < DOUBLE_CLICK_MS) reset()
+    lastMiss.current = now
+  }
+
+  const anySelected = Boolean(selection.buildingId)
+  const selectedBuilding = buildings.find((b) => b.id === selection.buildingId)
+
   return (
-    <Canvas
-      dpr={[1, 1.75]}
-      camera={{ position: [95, 80, 110], fov: 38, near: 0.5, far: 600 }}
-      gl={{ antialias: false, powerPreference: 'high-performance' }}
-      style={{ width: '100%', height: '100%', minHeight: 256, background: PALETTE.bg }}
-    >
-      <color attach="background" args={[PALETTE.bg]} />
-      <fog attach="fog" args={[PALETTE.bg, 140, 330]} />
+    <div style={{ position: 'relative', width: '100%', height: '100%', minHeight: 256 }}>
+      <Canvas
+        dpr={[1, 1.75]}
+        camera={{ position: [95, 80, 110], fov: 38, near: 0.5, far: 600 }}
+        gl={{ antialias: false, powerPreference: 'high-performance' }}
+        style={{ background: PALETTE.bg }}
+        onPointerMissed={onPointerMissed}
+      >
+        <color attach="background" args={[PALETTE.bg]} />
+        <fog attach="fog" args={[PALETTE.bg, 140, 330]} />
 
-      <ambientLight intensity={0.55} color="#8aa4ff" />
-      <hemisphereLight args={['#9db8ff', '#0b1020', 0.5]} />
-      <directionalLight position={[70, 120, 50]} intensity={0.9} color="#cfe0ff" />
+        <ambientLight intensity={0.55} color="#8aa4ff" />
+        <hemisphereLight args={['#9db8ff', '#0b1020', 0.5]} />
+        <directionalLight position={[70, 120, 50]} intensity={0.9} color="#cfe0ff" />
 
-      <Ground buildings={buildings} />
-      <Trees buildings={buildings} utilities={utilities} />
-      {buildings.map((b) => (
-        <Building key={b.id} data={b} />
-      ))}
-      {utilities.map((u) => (
-        <UtilityNode key={u.id} data={u} />
-      ))}
+        <Ground buildings={buildings} />
+        <Trees buildings={buildings} utilities={utilities} />
+        {buildings.map((b) => {
+          const selected = b.id === selection.buildingId
+          return (
+            <Building
+              key={b.id}
+              data={b}
+              selected={selected}
+              dimmed={anySelected && !selected}
+              detail={selected && buildingDetail?.id === b.id ? buildingDetail : null}
+              selection={selection}
+              roomDetail={selected ? roomDetail : null}
+              onSelect={select}
+            />
+          )
+        })}
+        {utilities.map((u) => (
+          <UtilityNode key={u.id} data={u} />
+        ))}
 
-      <OrbitControls
-        makeDefault
-        target={target}
-        enableDamping
-        dampingFactor={0.08}
-        minDistance={25}
-        maxDistance={260}
-        maxPolarAngle={Math.PI / 2.15} // can't go under the ground
-      />
+        <CameraRig
+          buildings={buildings}
+          buildingDetail={buildingDetail}
+          selection={selection}
+          overviewTarget={overviewTarget}
+        />
+        <Effects />
+      </Canvas>
 
-      <Effects />
-    </Canvas>
+      {anySelected && (
+        <button type="button" style={backBtn} onClick={back}>
+          ← Back{selectedBuilding ? ` · ${selectedBuilding.name}` : ''}
+        </button>
+      )}
+    </div>
   )
 }
 
